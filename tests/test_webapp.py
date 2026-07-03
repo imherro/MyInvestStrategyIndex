@@ -5,6 +5,7 @@ from myinvest_strategy_index.webapp import (
     render_four_asset_compare_page,
     render_home_page,
     render_strategy_index_compare_page,
+    render_three_asset_compare_page,
     render_value_compare_page,
 )
 
@@ -17,15 +18,19 @@ def test_home_page_renders_strategy_card_entry() -> None:
     assert 'href="/value-compare"' in html
     assert 'href="/chinext-compare"' in html
     assert 'href="/four-asset-compare"' in html
+    assert 'href="/three-asset-compare"' in html
     assert "策略指数收益曲线对比" in html
     assert "value-compare" in html
     assert "创业板全收益指数对比" in html
     assert "chinext-compare" in html
     assert "四资产组合对比" in html
     assert "four-asset" in html
+    assert "三资产组合对比" in html
+    assert "three-asset" in html
     assert "/api/strategy-index-compare/history.json" not in html
     assert "/api/chinext-compare/history.json" not in html
     assert "/api/four-asset-compare/history.json" not in html
+    assert "/api/three-asset-compare/history.json" not in html
 
 
 def test_value_compare_page_renders_strategy_index_shell() -> None:
@@ -104,5 +109,25 @@ def test_four_asset_compare_page_renders_calmar_layered_model() -> None:
     assert "年化收益 10.43%，年化波动 8.54%，最大回撤 8.05%，Sharpe 1.251，Calmar 1.296" in html
     assert "等权组合年化收益 11.93%" in html
     assert "四资产等权组合" in html
+    assert "分层权重模型" in html
+    assert "最长回本时间" in html
+
+
+def test_three_asset_compare_page_renders_calmar_layered_model() -> None:
+    html = render_three_asset_compare_page()
+
+    assert "三资产组合对比" in html
+    assert "/api/three-asset-compare/history.json" in html
+    assert 'data-extra-metrics="true"' in html
+    assert 'data-synthetic-code="VIRTUAL_THREE_ASSET_EQUAL_WEIGHT"' in html
+    assert 'data-anchor-synthetic="false"' in html
+    assert 'data-show-background="false"' in html
+    assert 'href="/"' in html
+    assert 'href="/value-compare"' in html
+    assert "三资产 Calmar 优化结论" in html
+    assert "创业板R20.00%、自由现金流R40.00%、黄金ETF40.00%" in html
+    assert "年化收益 14.66%，年化波动 15.31%，最大回撤 32.84%，Sharpe 1.003，Calmar 0.446" in html
+    assert "等权组合年化收益 14.40%" in html
+    assert "三资产等权组合" in html
     assert "分层权重模型" in html
     assert "最长回本时间" in html

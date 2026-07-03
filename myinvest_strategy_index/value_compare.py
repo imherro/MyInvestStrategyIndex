@@ -36,6 +36,12 @@ FOUR_ASSET_CALMAR_WEIGHT_COMPONENTS: tuple[tuple[str, float], ...] = (
     ("511260.SH", 0.4),
 )
 
+THREE_ASSET_CALMAR_WEIGHT_COMPONENTS: tuple[tuple[str, float], ...] = (
+    ("399606.SZ", 0.2),
+    ("480092.CNI", 0.4),
+    ("518880.SH", 0.4),
+)
+
 
 DEFAULT_VALUE_COMPARE_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = (
     ValueCompareInstrument(
@@ -187,6 +193,44 @@ FOUR_ASSET_CALMAR_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = (
     ),
 )
 
+THREE_ASSET_CALMAR_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = (
+    ValueCompareInstrument(
+        code="399606.SZ",
+        name="399006 创业板R（全收益）",
+        kind="index",
+        source="Tushare index_daily；399006 的全收益指数代码 399606.SZ",
+        color="#0F766E",
+    ),
+    ValueCompareInstrument(
+        code="480092.CNI",
+        name="自由现金流R收益指数",
+        kind="index",
+        source="Tushare index_daily",
+        color="#B23A48",
+    ),
+    ValueCompareInstrument(
+        code="518880.SH",
+        name="518880 华安黄金ETF",
+        kind="etf",
+        source="Tushare fund_daily + fund_adj",
+        color="#C68A00",
+    ),
+    ValueCompareInstrument(
+        code="VIRTUAL_THREE_ASSET_EQUAL_WEIGHT",
+        name="三资产等权组合",
+        kind="synthetic_equal_weight",
+        source="创业板R/自由现金流R/黄金ETF 动态等权",
+        color="#111827",
+    ),
+    ValueCompareInstrument(
+        code="VIRTUAL_THREE_ASSET_CALMAR_LAYERED",
+        name="分层权重模型（Calmar全样本最优）",
+        kind="synthetic_layered_weight",
+        source="Calmar全样本最优：创业板R20.00%+自由现金流R40.00%+黄金ETF40.00%",
+        color="#0891B2",
+    ),
+)
+
 
 def get_value_compare_payload(settings: Settings, *, refresh: bool = False) -> dict[str, object]:
     return _get_compare_payload(
@@ -216,6 +260,17 @@ def get_four_asset_calmar_payload(settings: Settings, *, refresh: bool = False) 
         instruments=FOUR_ASSET_CALMAR_INSTRUMENTS,
         background=None,
         layered_components=FOUR_ASSET_CALMAR_WEIGHT_COMPONENTS,
+        layered_cash_weight=0.0,
+        refresh=refresh,
+    )
+
+
+def get_three_asset_calmar_payload(settings: Settings, *, refresh: bool = False) -> dict[str, object]:
+    return _get_compare_payload(
+        settings,
+        instruments=THREE_ASSET_CALMAR_INSTRUMENTS,
+        background=None,
+        layered_components=THREE_ASSET_CALMAR_WEIGHT_COMPONENTS,
         layered_cash_weight=0.0,
         refresh=refresh,
     )
