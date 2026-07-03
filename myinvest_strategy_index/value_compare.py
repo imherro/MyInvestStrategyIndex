@@ -108,16 +108,64 @@ VALUE_COMPARE_BACKGROUND = ValueCompareInstrument(
     color="#94A3B8",
 )
 
+CHINEXT_TOTAL_RETURN_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = (
+    ValueCompareInstrument(
+        code="399606.SZ",
+        name="399006 创业板指全收益指数",
+        kind="index",
+        source="Tushare index_daily；399006 的全收益指数代码 399606.SZ",
+        color="#0F766E",
+    ),
+    ValueCompareInstrument(
+        code="CN2673.CNI",
+        name="399673 创业板50全收益指数",
+        kind="index",
+        source="Tushare index_daily；399673 的全收益指数代码 CN2673.CNI",
+        color="#2563EB",
+    ),
+    ValueCompareInstrument(
+        code="CN2296.CNI",
+        name="399296 创成长全收益指数",
+        kind="index",
+        source="Tushare index_daily；399296 的全收益指数代码 CN2296.CNI",
+        color="#D97706",
+    ),
+)
+
 
 def get_value_compare_payload(settings: Settings, *, refresh: bool = False) -> dict[str, object]:
+    return _get_compare_payload(
+        settings,
+        instruments=DEFAULT_VALUE_COMPARE_INSTRUMENTS,
+        background=VALUE_COMPARE_BACKGROUND,
+        refresh=refresh,
+    )
+
+
+def get_chinext_total_return_payload(settings: Settings, *, refresh: bool = False) -> dict[str, object]:
+    return _get_compare_payload(
+        settings,
+        instruments=CHINEXT_TOTAL_RETURN_INSTRUMENTS,
+        background=None,
+        refresh=refresh,
+    )
+
+
+def _get_compare_payload(
+    settings: Settings,
+    *,
+    instruments: tuple[ValueCompareInstrument, ...],
+    background: ValueCompareInstrument | None,
+    refresh: bool,
+) -> dict[str, object]:
     ensure_runtime_dirs(settings)
-    instruments = [asdict(item) for item in DEFAULT_VALUE_COMPARE_INSTRUMENTS]
+    instrument_records = [asdict(item) for item in instruments]
     series: dict[str, list[dict[str, object]]] = {}
     histories: dict[str, pd.DataFrame] = {}
     errors: list[dict[str, str]] = []
     updated_at = datetime.now().isoformat(timespec="seconds")
 
-    for instrument in DEFAULT_VALUE_COMPARE_INSTRUMENTS:
+    for instrument in instruments:
         if instrument.kind.startswith("synthetic_"):
             continue
         try:
@@ -129,10 +177,10 @@ def get_value_compare_payload(settings: Settings, *, refresh: bool = False) -> d
 
     component_histories = [
         histories[item.code]
-        for item in DEFAULT_VALUE_COMPARE_INSTRUMENTS
+        for item in instruments
         if not item.kind.startswith("synthetic_") and item.code in histories
     ]
-    for instrument in DEFAULT_VALUE_COMPARE_INSTRUMENTS:
+    for instrument in instruments:
         if not instrument.kind.startswith("synthetic_"):
             continue
         try:
@@ -147,19 +195,20 @@ def get_value_compare_payload(settings: Settings, *, refresh: bool = False) -> d
             errors.append({"code": instrument.code, "name": instrument.name, "error": str(exc)})
 
     background_series: list[dict[str, object]] = []
-    try:
-        background = load_or_fetch_value_history(settings, VALUE_COMPARE_BACKGROUND, refresh=refresh)
-        background_series = _history_records(background)
-    except Exception as exc:
-        errors.append({"code": VALUE_COMPARE_BACKGROUND.code, "name": VALUE_COMPARE_BACKGROUND.name, "error": str(exc)})
+    if background is not None:
+        try:
+            background_history = load_or_fetch_value_history(settings, background, refresh=refresh)
+            background_series = _history_records(background_history)
+        except Exception as exc:
+            errors.append({"code": background.code, "name": background.name, "error": str(exc)})
 
     return {
         "ok": not errors or bool(series),
         "updated_at": updated_at,
         "refresh": refresh,
-        "instruments": instruments,
+        "instruments": instrument_records,
         "series": series,
-        "background": asdict(VALUE_COMPARE_BACKGROUND),
+        "background": asdict(background) if background is not None else None,
         "background_series": background_series,
         "errors": errors,
     }

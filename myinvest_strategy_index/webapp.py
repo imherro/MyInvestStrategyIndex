@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Callable
 from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from myinvest_strategy_index.config import Settings, load_settings
-from myinvest_strategy_index.value_compare import get_value_compare_payload
+from myinvest_strategy_index.value_compare import get_chinext_total_return_payload, get_value_compare_payload
 
 
 __version__ = "0.1.0"
@@ -47,8 +48,14 @@ class StrategyIndexHandler(BaseHTTPRequestHandler):
         if parsed.path in {"/value-compare", "/strategy-index-compare"}:
             self._send_html(render_value_compare_page())
             return
+        if parsed.path in {"/chinext-compare", "/chinext-total-return"}:
+            self._send_html(render_chinext_compare_page())
+            return
         if parsed.path in {"/api/value-compare/history.json", "/api/strategy-index-compare/history.json"}:
-            self._send_value_compare_history(parsed.query)
+            self._send_history(parsed.query, get_value_compare_payload)
+            return
+        if parsed.path in {"/api/chinext-compare/history.json", "/api/chinext-total-return/history.json"}:
+            self._send_history(parsed.query, get_chinext_total_return_payload)
             return
         if parsed.path == "/health.json":
             self._send_json({"ok": True, "version": __version__, "time": datetime.now().isoformat(timespec="seconds")})
@@ -74,11 +81,11 @@ class StrategyIndexHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _send_value_compare_history(self, raw_query: str) -> None:
+    def _send_history(self, raw_query: str, payload_loader: Callable[..., dict[str, object]]) -> None:
         query = parse_qs(raw_query)
         refresh = (query.get("refresh", ["0"])[0] or "").lower() in {"1", "true", "yes", "y"}
         try:
-            payload = get_value_compare_payload(self.settings, refresh=refresh)
+            payload = payload_loader(self.settings, refresh=refresh)
         except Exception as exc:
             self._send_json({"ok": False, "error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
@@ -94,6 +101,7 @@ def run(host: str = "0.0.0.0", port: int = 8023) -> None:
             {
                 "url": f"http://{host}:{port}/",
                 "value_compare_url": f"http://{host}:{port}/value-compare",
+                "chinext_compare_url": f"http://{host}:{port}/chinext-compare",
                 "cache_dir": str(settings.cache_dir),
                 "tushare_token": bool(settings.tushare_token),
             },
@@ -286,6 +294,19 @@ def render_home_page() -> str:
           <span class="card-action">打开 →</span>
         </div>
       </a>
+      <a class="strategy-card" href="/chinext-compare" aria-label="打开创业板全收益指数对比">
+        <div class="card-head">
+          <h3 class="card-title">创业板全收益指数对比</h3>
+          <span class="card-tag">chinext-compare</span>
+        </div>
+        <p class="card-desc">
+          对比 399006 创业板指、399673 创业板50、399296 创成长三个指数的全收益版本，保留收益曲线、回撤和指标排序。
+        </p>
+        <div class="card-footer">
+          <span>三个全收益指数 / 同屏比较</span>
+          <span class="card-action">打开 →</span>
+        </div>
+      </a>
     </div>
   </main>
   __MYINVEST_FOOTER__
@@ -294,7 +315,36 @@ def render_home_page() -> str:
     return _inject_unified_shell(page)
 
 
-def render_etf_compare_page() -> str:
+def _strategy_calmar_panel_html() -> str:
+    return """
+    <section class="conclusion-panel">
+      <h2 class="panel-title">Calmar 优化结论</h2>
+      <div class="content">
+        <ul class="conclusion-list">
+          <li><span class="conclusion-key">分层权重模型已更新为 Calmar 全样本最优权重：</span>国信价值0%、创成长R11.13%、红利低波0%、自由现金流R25.22%、黄金ETF23.64%、十年国债ETF40.00%。</li>
+          <li><span class="conclusion-key">全样本表现：</span>优化组合 Calmar 1.713，高于等权组合 1.132；最大回撤 7.44%，低于等权组合 12.12%。</li>
+          <li><span class="conclusion-key">70/30 样本外验证：</span>训练期优化权重在样本外 Calmar 0.874，低于等权组合 1.910。</li>
+          <li><span class="conclusion-key">审计结论：</span>样本内有效、样本外不稳健，不应直接当作稳健配置，只适合作为参考边界。</li>
+        </ul>
+      </div>
+    </section>"""
+
+
+def _chinext_intro_panel_html() -> str:
+    return """
+    <section class="conclusion-panel">
+      <h2 class="panel-title">创业板全收益指数对比</h2>
+      <div class="content">
+        <ul class="conclusion-list">
+          <li><span class="conclusion-key">对比对象：</span>399006 创业板指、399673 创业板50、399296 创成长三个指数的全收益版本。</li>
+          <li><span class="conclusion-key">实际数据源：</span>399606.SZ 创业板R、CN2673.CNI 创业板50R、CN2296.CNI 创成长R。</li>
+          <li><span class="conclusion-key">展示方式：</span>默认三个指数全部勾选，指标和曲线按当前选择区间动态计算。</li>
+        </ul>
+      </div>
+    </section>"""
+
+
+def render_etf_compare_page(top_panel_html: str = "") -> str:
     page = """<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -624,23 +674,14 @@ def render_etf_compare_page() -> str:
       <div class="meta">
         <a class="pill" href="/">首页</a>
         <a class="pill" href="/value-compare">策略指数对比</a>
+        <a class="pill" href="/chinext-compare">创业板全收益</a>
         <span class="pill">主图可左右拖动</span>
         <span class="pill">日线复权口径</span>
       </div>
     </div>
   </div>
   <main>
-    <section class="conclusion-panel">
-      <h2 class="panel-title">Calmar 优化结论</h2>
-      <div class="content">
-        <ul class="conclusion-list">
-          <li><span class="conclusion-key">分层权重模型已更新为 Calmar 全样本最优权重：</span>国信价值0%、创成长R11.13%、红利低波0%、自由现金流R25.22%、黄金ETF23.64%、十年国债ETF40.00%。</li>
-          <li><span class="conclusion-key">全样本表现：</span>优化组合 Calmar 1.713，高于等权组合 1.132；最大回撤 7.44%，低于等权组合 12.12%。</li>
-          <li><span class="conclusion-key">70/30 样本外验证：</span>训练期优化权重在样本外 Calmar 0.874，低于等权组合 1.910。</li>
-          <li><span class="conclusion-key">审计结论：</span>样本内有效、样本外不稳健，不应直接当作稳健配置，只适合作为参考边界。</li>
-        </ul>
-      </div>
-    </section>
+    __TOP_PANEL__
     <section class="control-panel">
       <h2 class="panel-title">对比设置</h2>
       <div class="content controls-layout">
@@ -1727,12 +1768,13 @@ loadHistory(false);
 </script>
 </body>
 </html>"""
+    page = page.replace("__TOP_PANEL__", top_panel_html)
     return _inject_unified_shell(page)
 
 
 
 def render_strategy_index_compare_page() -> str:
-    page = render_etf_compare_page()
+    page = render_etf_compare_page(top_panel_html=_strategy_calmar_panel_html())
     replacements = {
         "ETF 复权对比 - MyInvestStrategyIndex": "策略指数对比 - MyInvestStrategyIndex",
         "ETF 复权价值曲线对比": "策略指数收益曲线对比",
@@ -1769,6 +1811,39 @@ def render_strategy_index_compare_page() -> str:
         page = page.replace(old, new)
     return page
 
+
+def render_chinext_compare_page() -> str:
+    page = render_etf_compare_page(top_panel_html=_chinext_intro_panel_html())
+    replacements = {
+        "ETF 复权对比 - MyInvestStrategyIndex": "创业板全收益指数对比 - MyInvestStrategyIndex",
+        "ETF 复权价值曲线对比": "创业板全收益指数对比",
+        "日线复权口径": "全收益指数口径",
+        "/api/etf-compare/history.json": "/api/chinext-compare/history.json",
+        "<body>": (
+            '<body data-api-path="/api/chinext-compare/history.json" data-extra-metrics="true" '
+            'data-anchor-synthetic="false" data-show-background="false" '
+            'data-longest-mode-label="最早起" data-longest-base-text="当前指数自身起点=0%">'
+        ),
+        (
+            "2012起模式按最早可用 ETF 开始展示；后上市 ETF 从上市日对应的虚拟等权ETF位置接上。"
+            "虚拟等权ETF按 512890、510500、510300、159915 四只真实 ETF 中当日已有数据的成分动态等权；"
+            "480092 为自由现金流R收益指数点位代理。"
+        ): (
+            "最早起模式按最早可用全收益指数开始展示。创业板页对比 399006 创业板指、"
+            "399673 创业板50、399296 创成长三个指数的全收益版本；实际数据源分别为 "
+            "399606.SZ、CN2673.CNI、CN2296.CNI。"
+        ),
+        "2012起": "最早起",
+        "复权价值曲线": "全收益指数曲线",
+        '<th data-sort="annualizedReturnDrawdownRatio">年化收益/最大回撤</th>': (
+            '<th data-sort="annualizedReturnDrawdownRatio">年化收益/最大回撤</th>\n'
+            '                <th data-sort="longestRecoveryDays">最长回本时间</th>\n'
+            '                <th data-sort="rollingThreeYearWorstReturn">滚动3年最差收益</th>'
+        ),
+    }
+    for old, new in replacements.items():
+        page = page.replace(old, new)
+    return page
 
 
 def render_value_compare_page() -> str:

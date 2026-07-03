@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from myinvest_strategy_index.config import load_settings
 from myinvest_strategy_index.value_compare import (
+    CHINEXT_TOTAL_RETURN_INSTRUMENTS,
     DEFAULT_VALUE_COMPARE_INSTRUMENTS,
     VALUE_COMPARE_BACKGROUND,
+    get_chinext_total_return_payload,
     get_value_compare_payload,
 )
 
@@ -95,3 +97,34 @@ def test_layered_weight_model_uses_calmar_full_sample_weights(tmp_path) -> None:
 
     assert payload["ok"] is True
     assert payload["series"]["VIRTUAL_LAYERED_WEIGHT_STRATEGY"][1]["value"] == 1.098418
+
+
+def test_chinext_total_return_payload_reads_three_cached_indices(tmp_path) -> None:
+    settings = load_settings(root=tmp_path, env_file=tmp_path / ".env")
+    settings.cache_dir.mkdir(parents=True)
+    second_values = {
+        "399606.SZ": 1100,
+        "CN2673.CNI": 1200,
+        "CN2296.CNI": 1300,
+    }
+    for instrument in CHINEXT_TOTAL_RETURN_INSTRUMENTS:
+        safe_code = instrument.code.replace(".", "_")
+        second_value = second_values[instrument.code]
+        (settings.cache_dir / f"value_compare_{safe_code}.csv").write_text(
+            "date,close,value\n"
+            "2021-01-04,1000.000,1000.000\n"
+            f"2021-01-05,{second_value}.000,{second_value}.000\n",
+            encoding="utf-8",
+        )
+
+    payload = get_chinext_total_return_payload(settings)
+
+    assert payload["ok"] is True
+    assert not payload["errors"]
+    assert len(payload["instruments"]) == 3
+    assert payload["background"] is None
+    assert payload["background_series"] == []
+    assert set(payload["series"]) == {"399606.SZ", "CN2673.CNI", "CN2296.CNI"}
+    assert payload["series"]["399606.SZ"][1]["value"] == 1100.0
+    assert payload["series"]["CN2673.CNI"][1]["value"] == 1200.0
+    assert payload["series"]["CN2296.CNI"][1]["value"] == 1300.0

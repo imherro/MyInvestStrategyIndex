@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from myinvest_strategy_index.webapp import render_home_page, render_strategy_index_compare_page, render_value_compare_page
+from myinvest_strategy_index.webapp import (
+    render_chinext_compare_page,
+    render_home_page,
+    render_strategy_index_compare_page,
+    render_value_compare_page,
+)
 
 
 def test_home_page_renders_strategy_card_entry() -> None:
@@ -9,9 +14,13 @@ def test_home_page_renders_strategy_card_entry() -> None:
     assert "策略入口 - MyInvestStrategyIndex" in html
     assert "策略卡片" in html
     assert 'href="/value-compare"' in html
+    assert 'href="/chinext-compare"' in html
     assert "策略指数收益曲线对比" in html
     assert "value-compare" in html
+    assert "创业板全收益指数对比" in html
+    assert "chinext-compare" in html
     assert "/api/strategy-index-compare/history.json" not in html
+    assert "/api/chinext-compare/history.json" not in html
 
 
 def test_value_compare_page_renders_strategy_index_shell() -> None:
@@ -50,4 +59,23 @@ def test_value_compare_page_renders_strategy_index_shell() -> None:
     assert "background_series" in html
     assert "backgroundNormalizedSeries" in html
     assert "background-line" in html
+    assert "最长回本时间" in html
+
+
+def test_chinext_compare_page_renders_three_total_return_indices() -> None:
+    html = render_chinext_compare_page()
+
+    assert "创业板全收益指数对比" in html
+    assert "/api/chinext-compare/history.json" in html
+    assert 'data-extra-metrics="true"' in html
+    assert 'data-anchor-synthetic="false"' in html
+    assert 'data-show-background="false"' in html
+    assert 'href="/"' in html
+    assert 'href="/value-compare"' in html
+    assert "399006 创业板指" in html
+    assert "399673 创业板50" in html
+    assert "399296 创成长" in html
+    assert "399606.SZ、CN2673.CNI、CN2296.CNI" in html
+    assert "Calmar 优化结论" not in html
+    assert "样本内有效、样本外不稳健" not in html
     assert "最长回本时间" in html
