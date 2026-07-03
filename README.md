@@ -24,3 +24,13 @@ python -m myinvest_strategy_index.webapp --port 8023
 ```
 
 默认端口是 `8023`，默认绑定 `0.0.0.0`，局域网可通过本机 IP 访问。
+
+## Calmar 优化
+
+使用本地 `data/cache/value_compare_*.csv` 历史价格缓存，生成 6 资产 Calmar Ratio 优化报告：
+
+```powershell
+python -m myinvest_strategy_index.calmar_optimizer --seed 20260703
+```
+
+输出会写入 `reports/calmar_optimizer/`，包含 Markdown 报告、权重 CSV、净值曲线 CSV 和净值曲线 PNG。
