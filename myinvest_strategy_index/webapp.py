@@ -41,7 +41,10 @@ class StrategyIndexHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802 - stdlib callback name
         parsed = urlparse(self.path)
-        if parsed.path in {"/", "/index.html", "/value-compare", "/strategy-index-compare"}:
+        if parsed.path in {"/", "/index.html"}:
+            self._send_html(render_home_page())
+            return
+        if parsed.path in {"/value-compare", "/strategy-index-compare"}:
             self._send_html(render_value_compare_page())
             return
         if parsed.path in {"/api/value-compare/history.json", "/api/strategy-index-compare/history.json"}:
@@ -89,7 +92,8 @@ def run(host: str = "0.0.0.0", port: int = 8023) -> None:
     print(
         json.dumps(
             {
-                "url": f"http://{host}:{port}/value-compare",
+                "url": f"http://{host}:{port}/",
+                "value_compare_url": f"http://{host}:{port}/value-compare",
                 "cache_dir": str(settings.cache_dir),
                 "tushare_token": bool(settings.tushare_token),
             },
@@ -106,6 +110,189 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     run(host=args.host, port=args.port)
     return 0
+
+
+def render_home_page() -> str:
+    page = """<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>策略入口 - MyInvestStrategyIndex</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --text: #1c2430;
+      --muted: #687385;
+      --line: #d9dee7;
+      --accent: #0f766e;
+      --soft: #edf7f5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      letter-spacing: 0;
+    }
+    a { color: inherit; text-decoration: none; }
+    a:hover { text-decoration: none; }
+    .page-header {
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.97);
+    }
+    .bar {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 700;
+    }
+    .meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .pill {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 9px;
+      background: #fff;
+      white-space: nowrap;
+    }
+    main {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 20px 20px 32px;
+      display: grid;
+      gap: 16px;
+      align-items: start;
+    }
+    .section-title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+    .strategy-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 14px;
+    }
+    .strategy-card {
+      min-height: 172px;
+      display: grid;
+      gap: 12px;
+      align-content: space-between;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 16px;
+      transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+    }
+    .strategy-card:hover {
+      border-color: #93c5bd;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+      transform: translateY(-1px);
+    }
+    .card-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .card-title {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.3;
+      font-weight: 750;
+    }
+    .card-tag {
+      flex: 0 0 auto;
+      border: 1px solid #b7ddd6;
+      border-radius: 999px;
+      padding: 3px 8px;
+      color: var(--accent);
+      background: var(--soft);
+      font-size: 12px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+    .card-desc {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .card-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .card-action {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--accent);
+      font-weight: 700;
+    }
+    @media (max-width: 720px) {
+      .bar { align-items: flex-start; flex-direction: column; }
+      .meta { justify-content: flex-start; }
+      .strategy-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  __MYINVEST_HEADER__
+  <div class="page-header">
+    <div class="bar">
+      <h1>策略入口</h1>
+      <div class="meta">
+        <span class="pill">MyInvestStrategyIndex</span>
+        <span class="pill">端口 8023</span>
+      </div>
+    </div>
+  </div>
+  <main>
+    <h2 class="section-title">策略卡片</h2>
+    <div class="strategy-grid">
+      <a class="strategy-card" href="/value-compare" aria-label="打开策略指数收益曲线对比">
+        <div class="card-head">
+          <h3 class="card-title">策略指数收益曲线对比</h3>
+          <span class="card-tag">value-compare</span>
+        </div>
+        <p class="card-desc">
+          对比国信价值、创成长R、红利低波、自由现金流R、黄金ETF、十年国债ETF，并展示等权、风险平价和 Calmar 分层权重模型。
+        </p>
+        <div class="card-footer">
+          <span>收益曲线 / 回撤 / 指标排序</span>
+          <span class="card-action">打开 →</span>
+        </div>
+      </a>
+    </div>
+  </main>
+  __MYINVEST_FOOTER__
+</body>
+</html>"""
+    return _inject_unified_shell(page)
+
 
 def render_etf_compare_page() -> str:
     page = """<!doctype html>
@@ -435,6 +622,7 @@ def render_etf_compare_page() -> str:
     <div class="bar">
       <h1>ETF 复权价值曲线对比</h1>
       <div class="meta">
+        <a class="pill" href="/">首页</a>
         <a class="pill" href="/value-compare">策略指数对比</a>
         <span class="pill">主图可左右拖动</span>
         <span class="pill">日线复权口径</span>

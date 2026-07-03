@@ -1,6 +1,17 @@
 from __future__ import annotations
 
-from myinvest_strategy_index.webapp import render_strategy_index_compare_page, render_value_compare_page
+from myinvest_strategy_index.webapp import render_home_page, render_strategy_index_compare_page, render_value_compare_page
+
+
+def test_home_page_renders_strategy_card_entry() -> None:
+    html = render_home_page()
+
+    assert "策略入口 - MyInvestStrategyIndex" in html
+    assert "策略卡片" in html
+    assert 'href="/value-compare"' in html
+    assert "策略指数收益曲线对比" in html
+    assert "value-compare" in html
+    assert "/api/strategy-index-compare/history.json" not in html
 
 
 def test_value_compare_page_renders_strategy_index_shell() -> None:
@@ -15,6 +26,7 @@ def test_value_compare_page_renders_strategy_index_shell() -> None:
     assert "data-default-unselected-codes" not in html
     assert 'data-anchor-synthetic="false"' in html
     assert 'data-show-background="true"' in html
+    assert 'href="/"' in html
     assert "国信价值全收益" in html
     assert "创成长R" in html
     assert "价值100R" not in html
