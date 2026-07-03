@@ -20,12 +20,12 @@ class ValueCompareInstrument:
 
 
 LAYERED_WEIGHT_COMPONENTS: tuple[tuple[str, float], ...] = (
-    ("CN2296.CNI", 0.18),
-    ("480092.CNI", 0.22),
-    ("h21052.CSI", 0.15),
-    ("h20269.CSI", 0.20),
-    ("518880.SH", 0.15),
-    ("511260.SH", 0.10),
+    ("h21052.CSI", 0.0),
+    ("CN2296.CNI", 0.11134917573934289),
+    ("h20269.CSI", 0.0),
+    ("480092.CNI", 0.25223535553619914),
+    ("518880.SH", 0.2364154687244581),
+    ("511260.SH", 0.4),
 )
 LAYERED_CASH_WEIGHT = 0.0
 
@@ -89,11 +89,12 @@ DEFAULT_VALUE_COMPARE_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = (
     ),
     ValueCompareInstrument(
         code="VIRTUAL_LAYERED_WEIGHT_STRATEGY",
-        name="分层权重模型",
+        name="分层权重模型（Calmar全样本最优）",
         kind="synthetic_layered_weight",
         source=(
-            "固定比例：创成长R18%+自由现金流R22%+国信价值15%+红利低波20%+"
-            "黄金ETF15%+十年国债ETF10%；满足约束：红利+现金流42%、创成长18%、黄金15%"
+            "Calmar全样本最优：国信价值0%+创成长R11.13%+红利低波0%+"
+            "自由现金流R25.22%+黄金ETF23.64%+十年国债ETF40.00%；"
+            "样本外70/30验证输给等权，仅作参考"
         ),
         color="#0891B2",
     ),

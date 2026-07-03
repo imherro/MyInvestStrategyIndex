@@ -22,7 +22,11 @@ def test_value_compare_page_renders_strategy_index_shell() -> None:
     assert "华安黄金ETF" in html
     assert "十年国债ETF" in html
     assert "分层权重模型" in html
-    assert "分层模型固定比例为创成长R18%、自由现金流R22%、国信价值15%、红利低波20%" in html
+    assert "Calmar 优化结论" in html
+    assert "国信价值0%、创成长R11.13%、红利低波0%、自由现金流R25.22%、黄金ETF23.64%、十年国债ETF40.00%" in html
+    assert "样本内有效、样本外不稳健" in html
+    assert "样本外 Calmar 0.874" in html
+    assert "70/30 样本外验证" in html
     assert 'instrument.kind === "index"' not in html
     assert "isDynamicSyntheticCode" in html
     assert "策略等权组合" in html

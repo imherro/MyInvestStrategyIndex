@@ -193,6 +193,26 @@ def render_etf_compare_page() -> str:
       font-weight: 700;
       background: #fbfcfd;
     }
+    .conclusion-panel {
+      border-color: #bfd6e3;
+      background: #f8fbfc;
+    }
+    .conclusion-panel .panel-title {
+      background: #eef7f7;
+      color: #0f4f5f;
+    }
+    .conclusion-list {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding-left: 18px;
+      line-height: 1.55;
+      font-size: 13px;
+    }
+    .conclusion-key {
+      color: var(--accent);
+      font-weight: 700;
+    }
     .content { padding: 14px; }
     .stack { display: grid; gap: 16px; }
     .controls-layout {
@@ -422,6 +442,17 @@ def render_etf_compare_page() -> str:
     </div>
   </div>
   <main>
+    <section class="conclusion-panel">
+      <h2 class="panel-title">Calmar 优化结论</h2>
+      <div class="content">
+        <ul class="conclusion-list">
+          <li><span class="conclusion-key">分层权重模型已更新为 Calmar 全样本最优权重：</span>国信价值0%、创成长R11.13%、红利低波0%、自由现金流R25.22%、黄金ETF23.64%、十年国债ETF40.00%。</li>
+          <li><span class="conclusion-key">全样本表现：</span>优化组合 Calmar 1.713，高于等权组合 1.132；最大回撤 7.44%，低于等权组合 12.12%。</li>
+          <li><span class="conclusion-key">70/30 样本外验证：</span>训练期优化权重在样本外 Calmar 0.874，低于等权组合 1.910。</li>
+          <li><span class="conclusion-key">审计结论：</span>样本内有效、样本外不稳健，不应直接当作稳健配置，只适合作为参考边界。</li>
+        </ul>
+      </div>
+    </section>
     <section class="control-panel">
       <h2 class="panel-title">对比设置</h2>
       <div class="content controls-layout">
@@ -1533,9 +1564,9 @@ def render_strategy_index_compare_page() -> str:
         ): (
             "最早起模式按最早可用指数开始展示。策略指数页对比国信价值全收益、创成长R、"
             "红利低波全收益、自由现金流R、华安黄金ETF和十年国债ETF，并提供当前勾选成分的"
-            "策略等权组合和滚动60日风险平价组合，以及固定分层权重模型；"
-            "分层模型固定比例为创成长R18%、自由现金流R22%、国信价值15%、红利低波20%、"
-            "黄金ETF15%、十年国债ETF10%。"
+            "策略等权组合和滚动60日风险平价组合，以及Calmar全样本最优分层权重模型；"
+            "分层模型权重为国信价值0%、创成长R11.13%、红利低波0%、自由现金流R25.22%、"
+            "黄金ETF23.64%、十年国债ETF40.00%；样本外70/30验证输给等权，仅作参考。"
             "上证指数作为灰色背景线，仅用于观察市场背景，不参与指标排序。"
         ),
         "2012起": "最早起",

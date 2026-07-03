@@ -65,10 +65,10 @@ def test_value_compare_synthetic_series_include_gold_and_bond_etfs(tmp_path) -> 
     assert payload["ok"] is True
     assert payload["series"]["VIRTUAL_EQUAL_WEIGHT_STRATEGY"][1]["value"] == 1.066667
     assert payload["series"]["VIRTUAL_RISK_PARITY_STRATEGY"][1]["value"] == 1.066667
-    assert payload["series"]["VIRTUAL_LAYERED_WEIGHT_STRATEGY"][1]["value"] == 1.05
+    assert payload["series"]["VIRTUAL_LAYERED_WEIGHT_STRATEGY"][1]["value"] == 1.127283
 
 
-def test_layered_weight_model_uses_fixed_sleeve_weights(tmp_path) -> None:
+def test_layered_weight_model_uses_calmar_full_sample_weights(tmp_path) -> None:
     settings = load_settings(root=tmp_path, env_file=tmp_path / ".env")
     settings.cache_dir.mkdir(parents=True)
     second_values = {
@@ -94,4 +94,4 @@ def test_layered_weight_model_uses_fixed_sleeve_weights(tmp_path) -> None:
     payload = get_value_compare_payload(settings)
 
     assert payload["ok"] is True
-    assert payload["series"]["VIRTUAL_LAYERED_WEIGHT_STRATEGY"][1]["value"] == 1.0855
+    assert payload["series"]["VIRTUAL_LAYERED_WEIGHT_STRATEGY"][1]["value"] == 1.098418
