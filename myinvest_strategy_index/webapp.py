@@ -544,6 +544,12 @@ const LONGEST_MODE_LABEL = document.body.dataset.longestModeLabel || "2012起";
 const LONGEST_BASE_TEXT = document.body.dataset.longestBaseText || "后上市标的接到虚拟等权ETF位置";
 const INCLUDE_RECOVERY_METRICS = document.body.dataset.extraMetrics === "true";
 const SHOW_BACKGROUND = document.body.dataset.showBackground === "true";
+const DEFAULT_UNSELECTED_CODES = new Set(
+  (document.body.dataset.defaultUnselectedCodes || "")
+    .split(",")
+    .map((code) => code.trim())
+    .filter(Boolean)
+);
 const VALUE_AXIS_MODES = {
   return: { title: "累计收益率%", baseline: 0 },
   multiple: { title: "净值倍数", baseline: 1 },
@@ -697,7 +703,11 @@ async function loadHistory(refresh = false) {
       });
     }
     state.payload = payload;
-    state.selected = new Set(payload.instruments.filter((item) => payload.series[item.code]?.length).map((item) => item.code));
+    state.selected = new Set(
+      payload.instruments
+        .filter((item) => payload.series[item.code]?.length && !DEFAULT_UNSELECTED_CODES.has(item.code))
+        .map((item) => item.code)
+    );
     renderInstrumentControls();
     setRangeToCurrentMode();
     renderAll();
@@ -1508,6 +1518,7 @@ def render_strategy_index_compare_page() -> str:
             '<body data-api-path="/api/strategy-index-compare/history.json" data-extra-metrics="true" '
             'data-synthetic-code="VIRTUAL_EQUAL_WEIGHT_STRATEGY" '
             'data-risk-parity-code="VIRTUAL_RISK_PARITY_STRATEGY" data-anchor-synthetic="false" '
+            'data-default-unselected-codes="h21052.CSI,h20269.CSI,511260.SH,VIRTUAL_RISK_PARITY_STRATEGY" '
             'data-show-background="true" data-longest-mode-label="最早起" '
             'data-longest-base-text="当前指数自身起点=0%；上证指数作灰色背景参考">'
         ),
