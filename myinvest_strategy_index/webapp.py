@@ -9,7 +9,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from myinvest_strategy_index.config import Settings, load_settings
-from myinvest_strategy_index.value_compare import get_chinext_total_return_payload, get_value_compare_payload
+from myinvest_strategy_index.value_compare import (
+    get_chinext_total_return_payload,
+    get_four_asset_calmar_payload,
+    get_value_compare_payload,
+)
 
 
 __version__ = "0.1.0"
@@ -51,11 +55,17 @@ class StrategyIndexHandler(BaseHTTPRequestHandler):
         if parsed.path in {"/chinext-compare", "/chinext-total-return"}:
             self._send_html(render_chinext_compare_page())
             return
+        if parsed.path in {"/four-asset-compare", "/four-asset-calmar"}:
+            self._send_html(render_four_asset_compare_page())
+            return
         if parsed.path in {"/api/value-compare/history.json", "/api/strategy-index-compare/history.json"}:
             self._send_history(parsed.query, get_value_compare_payload)
             return
         if parsed.path in {"/api/chinext-compare/history.json", "/api/chinext-total-return/history.json"}:
             self._send_history(parsed.query, get_chinext_total_return_payload)
+            return
+        if parsed.path in {"/api/four-asset-compare/history.json", "/api/four-asset-calmar/history.json"}:
+            self._send_history(parsed.query, get_four_asset_calmar_payload)
             return
         if parsed.path == "/health.json":
             self._send_json({"ok": True, "version": __version__, "time": datetime.now().isoformat(timespec="seconds")})
@@ -102,6 +112,7 @@ def run(host: str = "0.0.0.0", port: int = 8023) -> None:
                 "url": f"http://{host}:{port}/",
                 "value_compare_url": f"http://{host}:{port}/value-compare",
                 "chinext_compare_url": f"http://{host}:{port}/chinext-compare",
+                "four_asset_compare_url": f"http://{host}:{port}/four-asset-compare",
                 "cache_dir": str(settings.cache_dir),
                 "tushare_token": bool(settings.tushare_token),
             },
@@ -307,6 +318,19 @@ def render_home_page() -> str:
           <span class="card-action">打开 →</span>
         </div>
       </a>
+      <a class="strategy-card" href="/four-asset-compare" aria-label="打开四资产组合对比">
+        <div class="card-head">
+          <h3 class="card-title">四资产组合对比</h3>
+          <span class="card-tag">four-asset</span>
+        </div>
+        <p class="card-desc">
+          对比创业板R、自由现金流R、黄金ETF、十年国债ETF，并加入等权组合和 Calmar 全样本最优分层权重模型。
+        </p>
+        <div class="card-footer">
+          <span>真实标的 / 等权 / 最优分层</span>
+          <span class="card-action">打开 →</span>
+        </div>
+      </a>
     </div>
   </main>
   __MYINVEST_FOOTER__
@@ -340,6 +364,21 @@ def _chinext_intro_panel_html() -> str:
           <li><span class="conclusion-key">对比对象：</span>399006 创业板指、399673 创业板50、399296 创成长三个指数的全收益版本。</li>
           <li><span class="conclusion-key">实际数据源：</span>399606.SZ 创业板R、CN2673.CNI 创业板50R、CN2296.CNI 创成长R。</li>
           <li><span class="conclusion-key">展示方式：</span>默认三个指数全部勾选，指标和曲线按当前选择区间动态计算。</li>
+        </ul>
+      </div>
+    </section>"""
+
+
+def _four_asset_calmar_panel_html() -> str:
+    return """
+    <section class="conclusion-panel">
+      <h2 class="panel-title">四资产 Calmar 优化结论</h2>
+      <div class="content">
+        <ul class="conclusion-list">
+          <li><span class="conclusion-key">分层权重模型已更新为 Calmar 全样本最优权重：</span>创业板R15.80%、自由现金流R18.45%、黄金ETF25.74%、十年国债ETF40.00%。</li>
+          <li><span class="conclusion-key">最优分层权重模型年化表现：</span>2017-08-24 至 2026-07-02 全样本区间，年化收益 10.43%，年化波动 8.54%，最大回撤 8.05%，Sharpe 1.251，Calmar 1.296。</li>
+          <li><span class="conclusion-key">等权组合对比：</span>同区间等权组合年化收益 11.93%，年化波动 11.69%，最大回撤 13.20%，Sharpe 1.061，Calmar 0.904。</li>
+          <li><span class="conclusion-key">结论：</span>Calmar 最优模型牺牲部分年化收益，换取更低回撤和更高收益回撤比；十年国债ETF触及40%上限，组合偏防守，全样本优化不代表样本外承诺。</li>
         </ul>
       </div>
     </section>"""
@@ -676,6 +715,7 @@ def render_etf_compare_page(top_panel_html: str = "") -> str:
         <a class="pill" href="/">首页</a>
         <a class="pill" href="/value-compare">策略指数对比</a>
         <a class="pill" href="/chinext-compare">创业板全收益</a>
+        <a class="pill" href="/four-asset-compare">四资产组合</a>
         <span class="pill">主图可左右拖动</span>
         <span class="pill">日线复权口径</span>
       </div>
@@ -1836,6 +1876,41 @@ def render_chinext_compare_page() -> str:
         ),
         "2012起": "最早起",
         "复权价值曲线": "全收益指数曲线",
+        '<th data-sort="annualizedReturnDrawdownRatio">年化收益/最大回撤</th>': (
+            '<th data-sort="annualizedReturnDrawdownRatio">年化收益/最大回撤</th>\n'
+            '                <th data-sort="longestRecoveryDays">最长回本时间</th>\n'
+            '                <th data-sort="rollingThreeYearWorstReturn">滚动3年最差收益</th>'
+        ),
+    }
+    for old, new in replacements.items():
+        page = page.replace(old, new)
+    return page
+
+
+def render_four_asset_compare_page() -> str:
+    page = render_etf_compare_page(top_panel_html=_four_asset_calmar_panel_html())
+    replacements = {
+        "ETF 复权对比 - MyInvestStrategyIndex": "四资产组合对比 - MyInvestStrategyIndex",
+        "ETF 复权价值曲线对比": "四资产组合对比",
+        "日线复权口径": "全收益/复权口径",
+        "/api/etf-compare/history.json": "/api/four-asset-compare/history.json",
+        "<body>": (
+            '<body data-api-path="/api/four-asset-compare/history.json" data-extra-metrics="true" '
+            'data-synthetic-code="VIRTUAL_FOUR_ASSET_EQUAL_WEIGHT" '
+            'data-anchor-synthetic="false" data-show-background="false" '
+            'data-longest-mode-label="最早起" data-longest-base-text="当前标的自身起点=0%">'
+        ),
+        (
+            "2012起模式按最早可用 ETF 开始展示；后上市 ETF 从上市日对应的虚拟等权ETF位置接上。"
+            "虚拟等权ETF按 512890、510500、510300、159915 四只真实 ETF 中当日已有数据的成分动态等权；"
+            "480092 为自由现金流R收益指数点位代理。"
+        ): (
+            "最早起模式按四个真实标的的最早可用数据开始展示。四资产页对比创业板R、"
+            "自由现金流R、华安黄金ETF、十年国债ETF，并加入四资产等权组合和 Calmar "
+            "全样本最优分层权重模型。"
+        ),
+        "2012起": "最早起",
+        "复权价值曲线": "四资产组合曲线",
         '<th data-sort="annualizedReturnDrawdownRatio">年化收益/最大回撤</th>': (
             '<th data-sort="annualizedReturnDrawdownRatio">年化收益/最大回撤</th>\n'
             '                <th data-sort="longestRecoveryDays">最长回本时间</th>\n'

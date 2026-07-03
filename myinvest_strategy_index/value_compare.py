@@ -29,6 +29,13 @@ LAYERED_WEIGHT_COMPONENTS: tuple[tuple[str, float], ...] = (
 )
 LAYERED_CASH_WEIGHT = 0.0
 
+FOUR_ASSET_CALMAR_WEIGHT_COMPONENTS: tuple[tuple[str, float], ...] = (
+    ("399606.SZ", 0.158012392945),
+    ("480092.CNI", 0.184545205429),
+    ("518880.SH", 0.257442401626),
+    ("511260.SH", 0.4),
+)
+
 
 DEFAULT_VALUE_COMPARE_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = (
     ValueCompareInstrument(
@@ -132,12 +139,62 @@ CHINEXT_TOTAL_RETURN_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = (
     ),
 )
 
+FOUR_ASSET_CALMAR_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = (
+    ValueCompareInstrument(
+        code="399606.SZ",
+        name="399006 创业板R（全收益）",
+        kind="index",
+        source="Tushare index_daily；399006 的全收益指数代码 399606.SZ",
+        color="#0F766E",
+    ),
+    ValueCompareInstrument(
+        code="480092.CNI",
+        name="自由现金流R收益指数",
+        kind="index",
+        source="Tushare index_daily",
+        color="#B23A48",
+    ),
+    ValueCompareInstrument(
+        code="518880.SH",
+        name="518880 华安黄金ETF",
+        kind="etf",
+        source="Tushare fund_daily + fund_adj",
+        color="#C68A00",
+    ),
+    ValueCompareInstrument(
+        code="511260.SH",
+        name="511260 十年国债ETF",
+        kind="etf",
+        source="Tushare fund_daily + fund_adj",
+        color="#475569",
+    ),
+    ValueCompareInstrument(
+        code="VIRTUAL_FOUR_ASSET_EQUAL_WEIGHT",
+        name="四资产等权组合",
+        kind="synthetic_equal_weight",
+        source="创业板R/自由现金流R/黄金ETF/十年国债ETF 动态等权",
+        color="#111827",
+    ),
+    ValueCompareInstrument(
+        code="VIRTUAL_FOUR_ASSET_CALMAR_LAYERED",
+        name="分层权重模型（Calmar全样本最优）",
+        kind="synthetic_layered_weight",
+        source=(
+            "Calmar全样本最优：创业板R15.80%+自由现金流R18.45%+"
+            "黄金ETF25.74%+十年国债ETF40.00%"
+        ),
+        color="#0891B2",
+    ),
+)
+
 
 def get_value_compare_payload(settings: Settings, *, refresh: bool = False) -> dict[str, object]:
     return _get_compare_payload(
         settings,
         instruments=DEFAULT_VALUE_COMPARE_INSTRUMENTS,
         background=VALUE_COMPARE_BACKGROUND,
+        layered_components=LAYERED_WEIGHT_COMPONENTS,
+        layered_cash_weight=LAYERED_CASH_WEIGHT,
         refresh=refresh,
     )
 
@@ -147,6 +204,19 @@ def get_chinext_total_return_payload(settings: Settings, *, refresh: bool = Fals
         settings,
         instruments=CHINEXT_TOTAL_RETURN_INSTRUMENTS,
         background=None,
+        layered_components=(),
+        layered_cash_weight=0.0,
+        refresh=refresh,
+    )
+
+
+def get_four_asset_calmar_payload(settings: Settings, *, refresh: bool = False) -> dict[str, object]:
+    return _get_compare_payload(
+        settings,
+        instruments=FOUR_ASSET_CALMAR_INSTRUMENTS,
+        background=None,
+        layered_components=FOUR_ASSET_CALMAR_WEIGHT_COMPONENTS,
+        layered_cash_weight=0.0,
         refresh=refresh,
     )
 
@@ -156,6 +226,8 @@ def _get_compare_payload(
     *,
     instruments: tuple[ValueCompareInstrument, ...],
     background: ValueCompareInstrument | None,
+    layered_components: tuple[tuple[str, float], ...],
+    layered_cash_weight: float,
     refresh: bool,
 ) -> dict[str, object]:
     ensure_runtime_dirs(settings)
@@ -187,7 +259,11 @@ def _get_compare_payload(
             if instrument.kind == "synthetic_risk_parity":
                 history = _build_risk_parity_history(component_histories)
             elif instrument.kind == "synthetic_layered_weight":
-                history = _build_layered_weight_history(histories)
+                history = _build_layered_weight_history(
+                    histories,
+                    layered_components=layered_components,
+                    cash_weight=layered_cash_weight,
+                )
             else:
                 history = _build_equal_weight_history(component_histories)
             series[instrument.code] = _history_records(history)
@@ -316,19 +392,24 @@ def _build_risk_parity_history(histories: list[pd.DataFrame], *, window: int = 6
     return _normalize_history(pd.DataFrame(rows))
 
 
-def _build_layered_weight_history(histories: dict[str, pd.DataFrame]) -> pd.DataFrame:
-    missing = [code for code, _ in LAYERED_WEIGHT_COMPONENTS if code not in histories]
+def _build_layered_weight_history(
+    histories: dict[str, pd.DataFrame],
+    *,
+    layered_components: tuple[tuple[str, float], ...],
+    cash_weight: float,
+) -> pd.DataFrame:
+    missing = [code for code, _ in layered_components if code not in histories]
     if missing:
         raise RuntimeError(f"Missing layered model components: {', '.join(missing)}")
 
-    total_weight = LAYERED_CASH_WEIGHT + sum(weight for _, weight in LAYERED_WEIGHT_COMPONENTS)
+    total_weight = cash_weight + sum(weight for _, weight in layered_components)
     if not math.isclose(total_weight, 1.0, abs_tol=1e-9):
         raise RuntimeError(f"Layered model weights must sum to 1.0, got {total_weight:.6f}")
 
     values: dict[str, pd.Series] = {}
     starts: list[pd.Timestamp] = []
     ends: list[pd.Timestamp] = []
-    for code, _ in LAYERED_WEIGHT_COMPONENTS:
+    for code, _ in layered_components:
         frame = histories[code].sort_values("date").drop_duplicates("date", keep="last").copy()
         if frame.empty:
             raise RuntimeError(f"Layered model component has no rows: {code}")
@@ -356,7 +437,7 @@ def _build_layered_weight_history(histories: dict[str, pd.DataFrame]) -> pd.Data
     for index, date in enumerate(dates):
         if index > 0:
             portfolio_return = 0.0
-            for code, weight in LAYERED_WEIGHT_COMPONENTS:
+            for code, weight in layered_components:
                 daily_return = returns[code].get(date, math.nan)
                 if math.isfinite(float(daily_return)):
                     portfolio_return += weight * float(daily_return)

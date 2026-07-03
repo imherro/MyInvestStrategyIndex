@@ -4,8 +4,10 @@ from myinvest_strategy_index.config import load_settings
 from myinvest_strategy_index.value_compare import (
     CHINEXT_TOTAL_RETURN_INSTRUMENTS,
     DEFAULT_VALUE_COMPARE_INSTRUMENTS,
+    FOUR_ASSET_CALMAR_INSTRUMENTS,
     VALUE_COMPARE_BACKGROUND,
     get_chinext_total_return_payload,
+    get_four_asset_calmar_payload,
     get_value_compare_payload,
 )
 
@@ -128,3 +130,42 @@ def test_chinext_total_return_payload_reads_three_cached_indices(tmp_path) -> No
     assert payload["series"]["399606.SZ"][1]["value"] == 1100.0
     assert payload["series"]["CN2673.CNI"][1]["value"] == 1200.0
     assert payload["series"]["CN2296.CNI"][1]["value"] == 1300.0
+
+
+def test_four_asset_calmar_payload_includes_equal_and_layered_models(tmp_path) -> None:
+    settings = load_settings(root=tmp_path, env_file=tmp_path / ".env")
+    settings.cache_dir.mkdir(parents=True)
+    second_values = {
+        "399606.SZ": 1100,
+        "480092.CNI": 1200,
+        "518880.SH": 1300,
+        "511260.SH": 950,
+    }
+    for instrument in FOUR_ASSET_CALMAR_INSTRUMENTS:
+        if instrument.kind.startswith("synthetic_"):
+            continue
+        safe_code = instrument.code.replace(".", "_")
+        second_value = second_values[instrument.code]
+        (settings.cache_dir / f"value_compare_{safe_code}.csv").write_text(
+            "date,close,value\n"
+            "2021-01-04,1000.000,1000.000\n"
+            f"2021-01-05,{second_value}.000,{second_value}.000\n",
+            encoding="utf-8",
+        )
+
+    payload = get_four_asset_calmar_payload(settings)
+
+    assert payload["ok"] is True
+    assert not payload["errors"]
+    assert len(payload["instruments"]) == 6
+    assert payload["background"] is None
+    assert set(payload["series"]) == {
+        "399606.SZ",
+        "480092.CNI",
+        "518880.SH",
+        "511260.SH",
+        "VIRTUAL_FOUR_ASSET_EQUAL_WEIGHT",
+        "VIRTUAL_FOUR_ASSET_CALMAR_LAYERED",
+    }
+    assert payload["series"]["VIRTUAL_FOUR_ASSET_EQUAL_WEIGHT"][1]["value"] == 1.1375
+    assert payload["series"]["VIRTUAL_FOUR_ASSET_CALMAR_LAYERED"][1]["value"] == 1.109943
