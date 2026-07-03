@@ -41,3 +41,25 @@ def test_value_compare_payload_reads_cached_histories_with_background(tmp_path) 
     assert payload["series"]["VIRTUAL_EQUAL_WEIGHT_STRATEGY"][1]["value"] == 1.05
     assert payload["series"]["VIRTUAL_RISK_PARITY_STRATEGY"][1]["value"] == 1.05
     assert payload["background_series"][1]["value"] == 1050.0
+
+
+def test_value_compare_synthetic_series_include_gold_and_bond_etfs(tmp_path) -> None:
+    settings = load_settings(root=tmp_path, env_file=tmp_path / ".env")
+    settings.cache_dir.mkdir(parents=True)
+    for instrument in [*DEFAULT_VALUE_COMPARE_INSTRUMENTS, VALUE_COMPARE_BACKGROUND]:
+        if instrument.kind.startswith("synthetic_"):
+            continue
+        safe_code = instrument.code.replace(".", "_")
+        second_value = 1200 if instrument.code in {"518880.SH", "511260.SH"} else 1000
+        (settings.cache_dir / f"value_compare_{safe_code}.csv").write_text(
+            "date,close,value\n"
+            "2021-01-04,1000.000,1000.000\n"
+            f"2021-01-05,{second_value}.000,{second_value}.000\n",
+            encoding="utf-8",
+        )
+
+    payload = get_value_compare_payload(settings)
+
+    assert payload["ok"] is True
+    assert payload["series"]["VIRTUAL_EQUAL_WEIGHT_STRATEGY"][1]["value"] == 1.066667
+    assert payload["series"]["VIRTUAL_RISK_PARITY_STRATEGY"][1]["value"] == 1.066667

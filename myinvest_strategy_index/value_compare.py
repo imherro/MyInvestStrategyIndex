@@ -105,19 +105,19 @@ def get_value_compare_payload(settings: Settings, *, refresh: bool = False) -> d
         except Exception as exc:
             errors.append({"code": instrument.code, "name": instrument.name, "error": str(exc)})
 
-    index_histories = [
+    component_histories = [
         histories[item.code]
         for item in DEFAULT_VALUE_COMPARE_INSTRUMENTS
-        if item.kind == "index" and item.code in histories
+        if not item.kind.startswith("synthetic_") and item.code in histories
     ]
     for instrument in DEFAULT_VALUE_COMPARE_INSTRUMENTS:
         if not instrument.kind.startswith("synthetic_"):
             continue
         try:
             if instrument.kind == "synthetic_risk_parity":
-                history = _build_risk_parity_history(index_histories)
+                history = _build_risk_parity_history(component_histories)
             else:
-                history = _build_equal_weight_history(index_histories)
+                history = _build_equal_weight_history(component_histories)
             series[instrument.code] = _history_records(history)
         except Exception as exc:
             errors.append({"code": instrument.code, "name": instrument.name, "error": str(exc)})

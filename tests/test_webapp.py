@@ -20,8 +20,8 @@ def test_value_compare_page_renders_strategy_index_shell() -> None:
     assert "自由现金流R" in html
     assert "华安黄金ETF" in html
     assert "十年国债ETF" in html
-    assert "黄金和国债ETF仅作对照资产，不参与组合计算" in html
-    assert 'instrument.kind === "index"' in html
+    assert "黄金和国债ETF会参与虚拟组合计算" in html
+    assert 'instrument.kind === "index"' not in html
     assert "策略等权组合" in html
     assert "风险平价组合" in html
     assert "buildRiskParityRows" in html
