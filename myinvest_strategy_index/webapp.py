@@ -751,6 +751,11 @@ function selectedCodes() {
 }
 
 function isSyntheticCode(code) {
+  const instrument = instrumentByCode(code);
+  return String(instrument.kind || "").startsWith("synthetic_");
+}
+
+function isDynamicSyntheticCode(code) {
   return code === SYNTHETIC_CODE || (RISK_PARITY_CODE && code === RISK_PARITY_CODE);
 }
 
@@ -761,7 +766,7 @@ function selectedComponentCodes() {
 function boundsCodes(codes = selectedCodes()) {
   const output = [];
   codes.forEach((code) => {
-    if (isSyntheticCode(code)) output.push(...selectedComponentCodes());
+    if (isDynamicSyntheticCode(code)) output.push(...selectedComponentCodes());
     else output.push(code);
   });
   return Array.from(new Set(output)).filter((code) => state.payload.series[code]?.length);
@@ -1518,7 +1523,6 @@ def render_strategy_index_compare_page() -> str:
             '<body data-api-path="/api/strategy-index-compare/history.json" data-extra-metrics="true" '
             'data-synthetic-code="VIRTUAL_EQUAL_WEIGHT_STRATEGY" '
             'data-risk-parity-code="VIRTUAL_RISK_PARITY_STRATEGY" data-anchor-synthetic="false" '
-            'data-default-unselected-codes="h21052.CSI,h20269.CSI,511260.SH,VIRTUAL_RISK_PARITY_STRATEGY" '
             'data-show-background="true" data-longest-mode-label="最早起" '
             'data-longest-base-text="当前指数自身起点=0%；上证指数作灰色背景参考">'
         ),
@@ -1529,7 +1533,9 @@ def render_strategy_index_compare_page() -> str:
         ): (
             "最早起模式按最早可用指数开始展示。策略指数页对比国信价值全收益、创成长R、"
             "红利低波全收益、自由现金流R、华安黄金ETF和十年国债ETF，并提供当前勾选成分的"
-            "策略等权组合和滚动60日风险平价组合；黄金和国债ETF会参与虚拟组合计算。"
+            "策略等权组合和滚动60日风险平价组合，以及固定分层权重模型；"
+            "分层模型固定比例为创成长R18%、自由现金流R22%、国信价值15%、红利低波20%、"
+            "黄金ETF15%、十年国债ETF10%。"
             "上证指数作为灰色背景线，仅用于观察市场背景，不参与指标排序。"
         ),
         "2012起": "最早起",

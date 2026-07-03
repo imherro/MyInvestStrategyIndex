@@ -19,6 +19,17 @@ class ValueCompareInstrument:
     color: str
 
 
+LAYERED_WEIGHT_COMPONENTS: tuple[tuple[str, float], ...] = (
+    ("CN2296.CNI", 0.18),
+    ("480092.CNI", 0.22),
+    ("h21052.CSI", 0.15),
+    ("h20269.CSI", 0.20),
+    ("518880.SH", 0.15),
+    ("511260.SH", 0.10),
+)
+LAYERED_CASH_WEIGHT = 0.0
+
+
 DEFAULT_VALUE_COMPARE_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = (
     ValueCompareInstrument(
         code="h21052.CSI",
@@ -76,6 +87,16 @@ DEFAULT_VALUE_COMPARE_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = (
         source="国信价值/创成长R/红利低波/自由现金流R 滚动60日波动率倒数加权",
         color="#2563EB",
     ),
+    ValueCompareInstrument(
+        code="VIRTUAL_LAYERED_WEIGHT_STRATEGY",
+        name="分层权重模型",
+        kind="synthetic_layered_weight",
+        source=(
+            "固定比例：创成长R18%+自由现金流R22%+国信价值15%+红利低波20%+"
+            "黄金ETF15%+十年国债ETF10%；满足约束：红利+现金流42%、创成长18%、黄金15%"
+        ),
+        color="#0891B2",
+    ),
 )
 
 VALUE_COMPARE_BACKGROUND = ValueCompareInstrument(
@@ -116,6 +137,8 @@ def get_value_compare_payload(settings: Settings, *, refresh: bool = False) -> d
         try:
             if instrument.kind == "synthetic_risk_parity":
                 history = _build_risk_parity_history(component_histories)
+            elif instrument.kind == "synthetic_layered_weight":
+                history = _build_layered_weight_history(histories)
             else:
                 history = _build_equal_weight_history(component_histories)
             series[instrument.code] = _history_records(history)
@@ -239,6 +262,56 @@ def _build_risk_parity_history(histories: list[pd.DataFrame], *, window: int = 6
                 daily_return = float(series.loc[date])
                 if math.isfinite(daily_return):
                     trailing_returns[asset_index].append(daily_return)
+
+    return _normalize_history(pd.DataFrame(rows))
+
+
+def _build_layered_weight_history(histories: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    missing = [code for code, _ in LAYERED_WEIGHT_COMPONENTS if code not in histories]
+    if missing:
+        raise RuntimeError(f"Missing layered model components: {', '.join(missing)}")
+
+    total_weight = LAYERED_CASH_WEIGHT + sum(weight for _, weight in LAYERED_WEIGHT_COMPONENTS)
+    if not math.isclose(total_weight, 1.0, abs_tol=1e-9):
+        raise RuntimeError(f"Layered model weights must sum to 1.0, got {total_weight:.6f}")
+
+    values: dict[str, pd.Series] = {}
+    starts: list[pd.Timestamp] = []
+    ends: list[pd.Timestamp] = []
+    for code, _ in LAYERED_WEIGHT_COMPONENTS:
+        frame = histories[code].sort_values("date").drop_duplicates("date", keep="last").copy()
+        if frame.empty:
+            raise RuntimeError(f"Layered model component has no rows: {code}")
+        series = frame.set_index("date")["value"].astype(float).sort_index()
+        values[code] = series
+        starts.append(pd.Timestamp(series.index.min()))
+        ends.append(pd.Timestamp(series.index.max()))
+
+    start = max(starts)
+    end = min(ends)
+    dates = sorted(
+        {
+            pd.Timestamp(date)
+            for series in values.values()
+            for date in series.index
+            if start <= pd.Timestamp(date) <= end
+        }
+    )
+    if len(dates) < 2:
+        raise RuntimeError("Layered model components have no overlapping history")
+
+    returns = {code: series.pct_change() for code, series in values.items()}
+    value = 1.0
+    rows: list[dict[str, object]] = []
+    for index, date in enumerate(dates):
+        if index > 0:
+            portfolio_return = 0.0
+            for code, weight in LAYERED_WEIGHT_COMPONENTS:
+                daily_return = returns[code].get(date, math.nan)
+                if math.isfinite(float(daily_return)):
+                    portfolio_return += weight * float(daily_return)
+            value *= 1.0 + portfolio_return
+        rows.append({"date": date, "close": value, "value": value})
 
     return _normalize_history(pd.DataFrame(rows))
 

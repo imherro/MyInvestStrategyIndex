@@ -36,10 +36,12 @@ def test_value_compare_payload_reads_cached_histories_with_background(tmp_path) 
     assert "511260.SH" in payload["series"]
     assert "VIRTUAL_EQUAL_WEIGHT_STRATEGY" in payload["series"]
     assert "VIRTUAL_RISK_PARITY_STRATEGY" in payload["series"]
+    assert "VIRTUAL_LAYERED_WEIGHT_STRATEGY" in payload["series"]
     assert payload["series"]["h21052.CSI"][0]["date"] == "2021-01-04"
     assert payload["series"]["CN2296.CNI"][1]["value"] == 1050.0
     assert payload["series"]["VIRTUAL_EQUAL_WEIGHT_STRATEGY"][1]["value"] == 1.05
     assert payload["series"]["VIRTUAL_RISK_PARITY_STRATEGY"][1]["value"] == 1.05
+    assert payload["series"]["VIRTUAL_LAYERED_WEIGHT_STRATEGY"][1]["value"] == 1.05
     assert payload["background_series"][1]["value"] == 1050.0
 
 
@@ -63,3 +65,33 @@ def test_value_compare_synthetic_series_include_gold_and_bond_etfs(tmp_path) -> 
     assert payload["ok"] is True
     assert payload["series"]["VIRTUAL_EQUAL_WEIGHT_STRATEGY"][1]["value"] == 1.066667
     assert payload["series"]["VIRTUAL_RISK_PARITY_STRATEGY"][1]["value"] == 1.066667
+    assert payload["series"]["VIRTUAL_LAYERED_WEIGHT_STRATEGY"][1]["value"] == 1.05
+
+
+def test_layered_weight_model_uses_fixed_sleeve_weights(tmp_path) -> None:
+    settings = load_settings(root=tmp_path, env_file=tmp_path / ".env")
+    settings.cache_dir.mkdir(parents=True)
+    second_values = {
+        "CN2296.CNI": 1200,
+        "480092.CNI": 1100,
+        "h21052.CSI": 1050,
+        "h20269.CSI": 900,
+        "518880.SH": 1300,
+        "511260.SH": 950,
+    }
+    for instrument in [*DEFAULT_VALUE_COMPARE_INSTRUMENTS, VALUE_COMPARE_BACKGROUND]:
+        if instrument.kind.startswith("synthetic_"):
+            continue
+        safe_code = instrument.code.replace(".", "_")
+        second_value = second_values.get(instrument.code, 1000)
+        (settings.cache_dir / f"value_compare_{safe_code}.csv").write_text(
+            "date,close,value\n"
+            "2021-01-04,1000.000,1000.000\n"
+            f"2021-01-05,{second_value}.000,{second_value}.000\n",
+            encoding="utf-8",
+        )
+
+    payload = get_value_compare_payload(settings)
+
+    assert payload["ok"] is True
+    assert payload["series"]["VIRTUAL_LAYERED_WEIGHT_STRATEGY"][1]["value"] == 1.0855

@@ -12,7 +12,7 @@ def test_value_compare_page_renders_strategy_index_shell() -> None:
     assert 'data-extra-metrics="true"' in html
     assert 'data-synthetic-code="VIRTUAL_EQUAL_WEIGHT_STRATEGY"' in html
     assert 'data-risk-parity-code="VIRTUAL_RISK_PARITY_STRATEGY"' in html
-    assert 'data-default-unselected-codes="h21052.CSI,h20269.CSI,511260.SH,VIRTUAL_RISK_PARITY_STRATEGY"' in html
+    assert "data-default-unselected-codes" not in html
     assert 'data-anchor-synthetic="false"' in html
     assert 'data-show-background="true"' in html
     assert "国信价值全收益" in html
@@ -21,8 +21,10 @@ def test_value_compare_page_renders_strategy_index_shell() -> None:
     assert "自由现金流R" in html
     assert "华安黄金ETF" in html
     assert "十年国债ETF" in html
-    assert "黄金和国债ETF会参与虚拟组合计算" in html
+    assert "分层权重模型" in html
+    assert "分层模型固定比例为创成长R18%、自由现金流R22%、国信价值15%、红利低波20%" in html
     assert 'instrument.kind === "index"' not in html
+    assert "isDynamicSyntheticCode" in html
     assert "策略等权组合" in html
     assert "风险平价组合" in html
     assert "buildRiskParityRows" in html
