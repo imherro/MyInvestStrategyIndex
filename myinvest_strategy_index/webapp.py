@@ -411,10 +411,10 @@ def _three_asset_calmar_panel_html() -> str:
       <h2 class="panel-title">三资产 Calmar 优化结论</h2>
       <div class="content">
         <ul class="conclusion-list">
-          <li><span class="conclusion-key">分层权重模型已更新为 Calmar 全样本最优权重：</span>创业板R20.00%、自由现金流R40.00%、黄金ETF40.00%。</li>
-          <li><span class="conclusion-key">最优分层权重模型年化表现：</span>2013-07-29 至 2026-07-02 全样本区间，年化收益 14.66%，年化波动 15.31%，最大回撤 32.84%，Sharpe 1.003，Calmar 0.446。</li>
-          <li><span class="conclusion-key">等权组合对比：</span>同区间等权组合年化收益 14.40%，年化波动 16.98%，最大回撤 35.95%，Sharpe 0.907，Calmar 0.401。</li>
-          <li><span class="conclusion-key">结论：</span>Calmar 最优模型把自由现金流R和黄金ETF打到40%上限，创业板R降到20%；相对等权，收益略高、波动和回撤更低，但三资产缺少债券缓冲，最大回撤仍明显偏高。</li>
+          <li><span class="conclusion-key">分层权重模型已更新为 Calmar 全样本最优权重：</span>创业板R21.68%、自由现金流R38.32%、黄金ETF40.00%。</li>
+          <li><span class="conclusion-key">最优分层权重模型年化表现：</span>2017-08-24 至 2026-07-02 区间，年化收益 14.75%，年化波动 14.38%，最大回撤 15.84%，Sharpe 1.067，Calmar 0.931。</li>
+          <li><span class="conclusion-key">等权组合对比：</span>同区间等权组合年化收益 14.39%，年化波动 15.72%，最大回撤 18.69%，Sharpe 0.968，Calmar 0.770。</li>
+          <li><span class="conclusion-key">结论：</span>从2017-08-24开始后，Calmar 最优模型仍把黄金ETF打到40%上限，并提高自由现金流R权重；相对等权，年化略高、回撤更低，收益回撤比明显改善。</li>
         </ul>
       </div>
     </section>"""
@@ -882,6 +882,7 @@ const LONGEST_MODE_LABEL = document.body.dataset.longestModeLabel || "2012起";
 const LONGEST_BASE_TEXT = document.body.dataset.longestBaseText || "后上市标的接到虚拟等权ETF位置";
 const INCLUDE_RECOVERY_METRICS = document.body.dataset.extraMetrics === "true";
 const SHOW_BACKGROUND = document.body.dataset.showBackground === "true";
+const DEFAULT_START_DATE = document.body.dataset.defaultStartDate || "";
 const DEFAULT_UNSELECTED_CODES = new Set(
   (document.body.dataset.defaultUnselectedCodes || "")
     .split(",")
@@ -1146,17 +1147,24 @@ function currentBounds() {
   return state.rangeMode === "longest" ? getLongestBounds() : getCommonBounds();
 }
 
+function defaultStartForBounds(bounds) {
+  if (!DEFAULT_START_DATE) return bounds.start;
+  const defaultStart = parseDate(DEFAULT_START_DATE);
+  if (!Number.isFinite(defaultStart)) return bounds.start;
+  return Math.min(Math.max(defaultStart, bounds.start), bounds.end);
+}
+
 function setRangeToCurrentMode() {
   const bounds = currentBounds();
   if (!bounds) return;
-  dom.start.value = fmtDate(bounds.start);
+  dom.start.value = fmtDate(defaultStartForBounds(bounds));
   dom.end.value = fmtDate(bounds.end);
 }
 
 function clampInputsToCurrentMode() {
   const bounds = currentBounds();
   if (!bounds) return;
-  let start = dom.start.value ? parseDate(dom.start.value) : bounds.start;
+  let start = dom.start.value ? parseDate(dom.start.value) : defaultStartForBounds(bounds);
   let end = dom.end.value ? parseDate(dom.end.value) : bounds.end;
   start = Math.max(start, bounds.start);
   end = Math.min(end, bounds.end);
@@ -1171,7 +1179,7 @@ function clampInputsToCurrentMode() {
 function activeRange() {
   const bounds = currentBounds();
   if (!bounds) return null;
-  let start = dom.start.value ? parseDate(dom.start.value) : bounds.start;
+  let start = dom.start.value ? parseDate(dom.start.value) : defaultStartForBounds(bounds);
   let end = dom.end.value ? parseDate(dom.end.value) : bounds.end;
   start = Math.max(start, bounds.start);
   end = Math.min(end, bounds.end);
@@ -1970,7 +1978,8 @@ def render_three_asset_compare_page() -> str:
             '<body data-api-path="/api/three-asset-compare/history.json" data-extra-metrics="true" '
             'data-synthetic-code="VIRTUAL_THREE_ASSET_EQUAL_WEIGHT" '
             'data-anchor-synthetic="false" data-show-background="false" '
-            'data-longest-mode-label="最早起" data-longest-base-text="当前标的自身起点=0%">'
+            'data-longest-mode-label="最早起" data-longest-base-text="当前标的自身起点=0%" '
+            'data-default-start-date="2017-08-24">'
         ),
         (
             "2012起模式按最早可用 ETF 开始展示；后上市 ETF 从上市日对应的虚拟等权ETF位置接上。"

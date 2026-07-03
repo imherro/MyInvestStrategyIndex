@@ -209,4 +209,4 @@ def test_three_asset_calmar_payload_includes_equal_and_layered_models(tmp_path) 
         "VIRTUAL_THREE_ASSET_CALMAR_LAYERED",
     }
     assert payload["series"]["VIRTUAL_THREE_ASSET_EQUAL_WEIGHT"][1]["value"] == 1.2
-    assert payload["series"]["VIRTUAL_THREE_ASSET_CALMAR_LAYERED"][1]["value"] == 1.22
+    assert payload["series"]["VIRTUAL_THREE_ASSET_CALMAR_LAYERED"][1]["value"] == 1.218319

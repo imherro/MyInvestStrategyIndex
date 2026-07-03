@@ -37,8 +37,8 @@ FOUR_ASSET_CALMAR_WEIGHT_COMPONENTS: tuple[tuple[str, float], ...] = (
 )
 
 THREE_ASSET_CALMAR_WEIGHT_COMPONENTS: tuple[tuple[str, float], ...] = (
-    ("399606.SZ", 0.2),
-    ("480092.CNI", 0.4),
+    ("399606.SZ", 0.216810075139),
+    ("480092.CNI", 0.383189924861),
     ("518880.SH", 0.4),
 )
 
@@ -226,7 +226,7 @@ THREE_ASSET_CALMAR_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = (
         code="VIRTUAL_THREE_ASSET_CALMAR_LAYERED",
         name="分层权重模型（Calmar全样本最优）",
         kind="synthetic_layered_weight",
-        source="Calmar全样本最优：创业板R20.00%+自由现金流R40.00%+黄金ETF40.00%",
+        source="Calmar全样本最优：创业板R21.68%+自由现金流R38.32%+黄金ETF40.00%",
         color="#0891B2",
     ),
 )

@@ -128,12 +128,13 @@ def test_three_asset_compare_page_renders_calmar_layered_model() -> None:
     assert 'data-synthetic-code="VIRTUAL_THREE_ASSET_EQUAL_WEIGHT"' in html
     assert 'data-anchor-synthetic="false"' in html
     assert 'data-show-background="false"' in html
+    assert 'data-default-start-date="2017-08-24"' in html
     assert 'href="/"' in html
     assert 'href="/value-compare"' in html
     assert "三资产 Calmar 优化结论" in html
-    assert "创业板R20.00%、自由现金流R40.00%、黄金ETF40.00%" in html
-    assert "年化收益 14.66%，年化波动 15.31%，最大回撤 32.84%，Sharpe 1.003，Calmar 0.446" in html
-    assert "等权组合年化收益 14.40%" in html
+    assert "创业板R21.68%、自由现金流R38.32%、黄金ETF40.00%" in html
+    assert "年化收益 14.75%，年化波动 14.38%，最大回撤 15.84%，Sharpe 1.067，Calmar 0.931" in html
+    assert "等权组合年化收益 14.39%" in html
     assert "三资产等权组合" in html
     assert "分层权重模型" in html
     assert "最长回本时间" in html
