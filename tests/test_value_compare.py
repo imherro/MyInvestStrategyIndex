@@ -159,6 +159,8 @@ def test_four_asset_calmar_payload_includes_equal_and_layered_models(tmp_path) -
     assert not payload["errors"]
     assert len(payload["instruments"]) == 6
     assert payload["background"] is None
+    bond = next(item for item in payload["instruments"] if item["code"] == "511260.SH")
+    assert bond["color"] == "#2563EB"
     assert set(payload["series"]) == {
         "399606.SZ",
         "480092.CNI",

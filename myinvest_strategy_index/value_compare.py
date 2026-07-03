@@ -166,7 +166,7 @@ FOUR_ASSET_CALMAR_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = (
         name="511260 十年国债ETF",
         kind="etf",
         source="Tushare fund_daily + fund_adj",
-        color="#475569",
+        color="#2563EB",
     ),
     ValueCompareInstrument(
         code="VIRTUAL_FOUR_ASSET_EQUAL_WEIGHT",
