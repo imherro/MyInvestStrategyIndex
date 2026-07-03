@@ -45,6 +45,8 @@ def test_value_compare_page_renders_strategy_index_shell() -> None:
     assert "分层权重模型" in html
     assert "Calmar 优化结论" in html
     assert "国信价值0%、创成长R11.13%、红利低波0%、自由现金流R25.22%、黄金ETF23.64%、十年国债ETF40.00%" in html
+    assert "最优分层权重模型年化表现" in html
+    assert "年化收益 12.73%，年化波动 8.86%，最大回撤 7.44%，Sharpe 1.453，Calmar 1.713" in html
     assert "样本内有效、样本外不稳健" in html
     assert "样本外 Calmar 0.874" in html
     assert "70/30 样本外验证" in html
