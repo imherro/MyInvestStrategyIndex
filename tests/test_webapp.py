@@ -45,6 +45,12 @@ def test_value_compare_page_renders_strategy_index_shell() -> None:
     assert "data-default-unselected-codes" not in html
     assert 'data-anchor-synthetic="false"' in html
     assert 'data-show-background="true"' in html
+    assert 'const state = {\n  payload: null,\n  selected: new Set(),\n  drag: null,\n  dynamicSyntheticRows: [],\n  dynamicRiskParityRows: [],\n  rangeMode: "common"' in html
+    assert 'sortKey: "annualizedReturnDrawdownRatio"' in html
+    assert '<button id="mode-longest" type="button" class="secondary" data-mode="longest">最早起</button>' in html
+    assert '<button id="mode-common" type="button" data-mode="common">共同区间</button>' in html
+    assert '<th data-sort="annualizedReturn">年化收益</th>' in html
+    assert '<th data-sort="annualizedReturnDrawdownRatio" class="sorted-desc">年化收益/最大回撤</th>' in html
     assert 'href="/"' in html
     assert "国信价值全收益" in html
     assert "创成长R" in html

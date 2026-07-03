@@ -770,8 +770,8 @@ def render_etf_compare_page(top_panel_html: str = "") -> str:
         <div class="control-group">
           <div class="control-title">时间范围</div>
           <div class="quick-buttons">
-            <button id="mode-longest" type="button" data-mode="longest">2012起</button>
-            <button id="mode-common" type="button" class="secondary" data-mode="common">共同区间</button>
+            <button id="mode-longest" type="button" class="secondary" data-mode="longest">2012起</button>
+            <button id="mode-common" type="button" data-mode="common">共同区间</button>
           </div>
           <div class="quick-buttons">
             <button type="button" class="secondary" data-range="all">全部</button>
@@ -852,10 +852,10 @@ def render_etf_compare_page(top_panel_html: str = "") -> str:
                 <th data-sort="name">标的</th>
                 <th data-sort="totalReturn">总收益</th>
                 <th data-sort="maxReturn">区间最高收益</th>
-                <th data-sort="annualizedReturn" class="sorted-desc">年化收益</th>
+                <th data-sort="annualizedReturn">年化收益</th>
                 <th data-sort="maxDrawdown">最大回撤</th>
                 <th data-sort="annualizedVolatility">年化波动</th>
-                <th data-sort="annualizedReturnDrawdownRatio">年化收益/最大回撤</th>
+                <th data-sort="annualizedReturnDrawdownRatio" class="sorted-desc">年化收益/最大回撤</th>
               </tr>
             </thead>
             <tbody id="metrics-body"></tbody>
@@ -900,9 +900,9 @@ const state = {
   drag: null,
   dynamicSyntheticRows: [],
   dynamicRiskParityRows: [],
-  rangeMode: "longest",
+  rangeMode: "common",
   valueAxisMode: "return",
-  sortKey: "annualizedReturn",
+  sortKey: "annualizedReturnDrawdownRatio",
   sortDirection: "desc",
 };
 
@@ -1879,8 +1879,8 @@ def render_strategy_index_compare_page() -> str:
         ),
         "2012起": "最早起",
         "复权价值曲线": "策略指数曲线",
-        '<th data-sort="annualizedReturnDrawdownRatio">年化收益/最大回撤</th>': (
-            '<th data-sort="annualizedReturnDrawdownRatio">年化收益/最大回撤</th>\n'
+        '<th data-sort="annualizedReturnDrawdownRatio" class="sorted-desc">年化收益/最大回撤</th>': (
+            '<th data-sort="annualizedReturnDrawdownRatio" class="sorted-desc">年化收益/最大回撤</th>\n'
             '                <th data-sort="longestRecoveryDays">最长回本时间</th>\n'
             '                <th data-sort="rollingThreeYearWorstReturn">滚动3年最差收益</th>'
         ),
@@ -1913,8 +1913,8 @@ def render_chinext_compare_page() -> str:
         ),
         "2012起": "最早起",
         "复权价值曲线": "全收益指数曲线",
-        '<th data-sort="annualizedReturnDrawdownRatio">年化收益/最大回撤</th>': (
-            '<th data-sort="annualizedReturnDrawdownRatio">年化收益/最大回撤</th>\n'
+        '<th data-sort="annualizedReturnDrawdownRatio" class="sorted-desc">年化收益/最大回撤</th>': (
+            '<th data-sort="annualizedReturnDrawdownRatio" class="sorted-desc">年化收益/最大回撤</th>\n'
             '                <th data-sort="longestRecoveryDays">最长回本时间</th>\n'
             '                <th data-sort="rollingThreeYearWorstReturn">滚动3年最差收益</th>'
         ),
@@ -1948,8 +1948,8 @@ def render_four_asset_compare_page() -> str:
         ),
         "2012起": "最早起",
         "复权价值曲线": "四资产组合曲线",
-        '<th data-sort="annualizedReturnDrawdownRatio">年化收益/最大回撤</th>': (
-            '<th data-sort="annualizedReturnDrawdownRatio">年化收益/最大回撤</th>\n'
+        '<th data-sort="annualizedReturnDrawdownRatio" class="sorted-desc">年化收益/最大回撤</th>': (
+            '<th data-sort="annualizedReturnDrawdownRatio" class="sorted-desc">年化收益/最大回撤</th>\n'
             '                <th data-sort="longestRecoveryDays">最长回本时间</th>\n'
             '                <th data-sort="rollingThreeYearWorstReturn">滚动3年最差收益</th>'
         ),
@@ -1982,8 +1982,8 @@ def render_three_asset_compare_page() -> str:
         ),
         "2012起": "最早起",
         "复权价值曲线": "三资产组合曲线",
-        '<th data-sort="annualizedReturnDrawdownRatio">年化收益/最大回撤</th>': (
-            '<th data-sort="annualizedReturnDrawdownRatio">年化收益/最大回撤</th>\n'
+        '<th data-sort="annualizedReturnDrawdownRatio" class="sorted-desc">年化收益/最大回撤</th>': (
+            '<th data-sort="annualizedReturnDrawdownRatio" class="sorted-desc">年化收益/最大回撤</th>\n'
             '                <th data-sort="longestRecoveryDays">最长回本时间</th>\n'
             '                <th data-sort="rollingThreeYearWorstReturn">滚动3年最差收益</th>'
         ),
