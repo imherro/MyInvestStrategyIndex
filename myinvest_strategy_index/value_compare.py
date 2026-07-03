@@ -49,6 +49,20 @@ DEFAULT_VALUE_COMPARE_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = (
         color="#B23A48",
     ),
     ValueCompareInstrument(
+        code="518880.SH",
+        name="518880 华安黄金ETF",
+        kind="etf",
+        source="Tushare fund_daily + fund_adj",
+        color="#C68A00",
+    ),
+    ValueCompareInstrument(
+        code="511260.SH",
+        name="511260 十年国债ETF",
+        kind="etf",
+        source="Tushare fund_daily + fund_adj",
+        color="#475569",
+    ),
+    ValueCompareInstrument(
         code="VIRTUAL_EQUAL_WEIGHT_STRATEGY",
         name="策略等权组合",
         kind="synthetic_equal_weight",
@@ -136,7 +150,10 @@ def load_or_fetch_value_history(
     if path.exists() and not refresh:
         return _load_cached_history(path)
 
-    history = _fetch_tushare_index(settings, instrument)
+    if instrument.kind == "etf":
+        history = _fetch_tushare_fund(settings, instrument)
+    else:
+        history = _fetch_tushare_index(settings, instrument)
     path.parent.mkdir(parents=True, exist_ok=True)
     history.to_csv(path, index=False, encoding="utf-8")
     return history
@@ -271,14 +288,45 @@ def _fetch_tushare_index(settings: Settings, instrument: ValueCompareInstrument)
     return _normalize_history(frame[["date", "close", "value"]])
 
 
+def _fetch_tushare_fund(settings: Settings, instrument: ValueCompareInstrument) -> pd.DataFrame:
+    if not settings.tushare_token:
+        raise RuntimeError("TUSHARE_TOKEN is not configured")
+    try:
+        import tushare as ts
+    except Exception as exc:  # pragma: no cover - import guard
+        raise RuntimeError(f"tushare import failed: {exc}") from exc
+
+    pro = ts.pro_api(settings.tushare_token)
+    daily = _fetch_tushare_yearly(pro, "fund_daily", instrument.code, start_year=2012)
+    if daily.empty:
+        raise RuntimeError(f"Tushare returned no fund_daily rows for {instrument.code}")
+    adj = _fetch_tushare_yearly(pro, "fund_adj", instrument.code, start_year=2012)
+
+    frame = daily[["trade_date", "close"]].copy()
+    if not adj.empty and "adj_factor" in adj:
+        frame = frame.merge(adj[["trade_date", "adj_factor"]], on="trade_date", how="left")
+    else:
+        frame["adj_factor"] = 1.0
+    frame["date"] = pd.to_datetime(frame["trade_date"], format="%Y%m%d", errors="coerce")
+    frame["close"] = pd.to_numeric(frame["close"], errors="coerce")
+    frame["adj_factor"] = pd.to_numeric(frame["adj_factor"], errors="coerce").fillna(1.0)
+    frame["value"] = frame["close"] * frame["adj_factor"]
+    return _normalize_history(frame[["date", "close", "value"]])
+
+
 def _fetch_tushare_index_yearly(pro: object, ts_code: str) -> pd.DataFrame:
+    return _fetch_tushare_yearly(pro, "index_daily", ts_code, start_year=2005)
+
+
+def _fetch_tushare_yearly(pro: object, method_name: str, ts_code: str, *, start_year: int) -> pd.DataFrame:
+    method = getattr(pro, method_name)
     frames: list[pd.DataFrame] = []
     history_end = datetime.now().strftime("%Y%m%d")
     end_year = int(history_end[:4])
-    for year in range(2005, end_year + 1):
+    for year in range(start_year, end_year + 1):
         start = f"{year}0101"
         end = history_end if year == end_year else f"{year}1231"
-        part = pro.index_daily(ts_code=ts_code, start_date=start, end_date=end)
+        part = method(ts_code=ts_code, start_date=start, end_date=end)
         if part is not None and not part.empty:
             frames.append(part)
     if not frames:

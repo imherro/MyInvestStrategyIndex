@@ -32,6 +32,8 @@ def test_value_compare_payload_reads_cached_histories_with_background(tmp_path) 
     assert "480081.CNI" not in payload["series"]
     assert "h20269.CSI" in payload["series"]
     assert "480092.CNI" in payload["series"]
+    assert "518880.SH" in payload["series"]
+    assert "511260.SH" in payload["series"]
     assert "VIRTUAL_EQUAL_WEIGHT_STRATEGY" in payload["series"]
     assert "VIRTUAL_RISK_PARITY_STRATEGY" in payload["series"]
     assert payload["series"]["h21052.CSI"][0]["date"] == "2021-01-04"

@@ -745,7 +745,10 @@ function isSyntheticCode(code) {
 }
 
 function selectedComponentCodes() {
-  return selectedCodes().filter((code) => !isSyntheticCode(code));
+  return selectedCodes().filter((code) => {
+    const instrument = instrumentByCode(code);
+    return !isSyntheticCode(code) && instrument.kind === "index";
+  });
 }
 
 function boundsCodes(codes = selectedCodes()) {
@@ -1517,7 +1520,8 @@ def render_strategy_index_compare_page() -> str:
             "480092 为自由现金流R收益指数点位代理。"
         ): (
             "最早起模式按最早可用指数开始展示。策略指数页对比国信价值全收益、创成长R、"
-            "红利低波全收益、自由现金流R，并提供当前勾选成分的策略等权组合和滚动60日风险平价组合；"
+            "红利低波全收益、自由现金流R、华安黄金ETF和十年国债ETF，并提供当前勾选策略指数成分的"
+            "策略等权组合和滚动60日风险平价组合；黄金和国债ETF仅作对照资产，不参与组合计算。"
             "上证指数作为灰色背景线，仅用于观察市场背景，不参与指标排序。"
         ),
         "2012起": "最早起",
