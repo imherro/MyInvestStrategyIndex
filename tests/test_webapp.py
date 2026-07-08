@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import json
+
+from myinvest_strategy_index.config import load_settings
 from myinvest_strategy_index.webapp import (
     render_chinext_compare_page,
     render_four_asset_compare_page,
     render_home_page,
+    render_strategy_backtest_detail_page,
+    render_strategy_backtests_page,
     render_strategy_index_compare_page,
     render_three_asset_compare_page,
     render_value_compare_page,
@@ -14,11 +19,13 @@ def test_home_page_renders_strategy_card_entry() -> None:
     html = render_home_page()
 
     assert "策略入口 - MyInvestStrategyIndex" in html
-    assert "策略卡片" in html
+    assert "策略研究" in html
+    assert "策略回测" in html
     assert 'href="/value-compare"' in html
     assert 'href="/chinext-compare"' in html
     assert 'href="/four-asset-compare"' in html
     assert 'href="/three-asset-compare"' in html
+    assert 'href="/strategy-backtests"' in html
     assert "策略指数收益曲线对比" in html
     assert "value-compare" in html
     assert "创业板全收益指数对比" in html
@@ -27,6 +34,8 @@ def test_home_page_renders_strategy_card_entry() -> None:
     assert "four-asset" in html
     assert "三资产组合对比" in html
     assert "three-asset" in html
+    assert "Cycle 策略回测集合" in html
+    assert "strategy-backtests" in html
     assert "/api/strategy-index-compare/history.json" not in html
     assert "/api/chinext-compare/history.json" not in html
     assert "/api/four-asset-compare/history.json" not in html
@@ -138,3 +147,79 @@ def test_three_asset_compare_page_renders_calmar_layered_model() -> None:
     assert "三资产等权组合" in html
     assert "分层权重模型" in html
     assert "最长回本时间" in html
+
+
+def test_strategy_backtests_page_renders_cycle_result_cards(tmp_path) -> None:
+    settings = load_settings(root=tmp_path, env_file=tmp_path / ".env")
+    backtest_dir = tmp_path / "cycle" / "strategy_backtests"
+    backtest_dir.mkdir(parents=True)
+    _write_backtest(backtest_dir / "four-asset.json", strategy_id="four-asset")
+
+    html = render_strategy_backtests_page(settings, backtest_dir=backtest_dir)
+
+    assert "策略回测 - MyInvestStrategyIndex" in html
+    assert "Cycle 子系统回测集合" in html
+    assert "资产配置（1）" in html
+    assert 'href="/strategy-backtests/four-asset"' in html
+    assert "four-asset strategy" in html
+    assert "/api/strategy-backtests/index.json" in html
+
+
+def test_strategy_backtest_detail_page_renders_cycle_result(tmp_path) -> None:
+    settings = load_settings(root=tmp_path, env_file=tmp_path / ".env")
+    backtest_dir = tmp_path / "cycle" / "strategy_backtests"
+    backtest_dir.mkdir(parents=True)
+    _write_backtest(backtest_dir / "four-asset.json", strategy_id="four-asset")
+
+    html = render_strategy_backtest_detail_page(settings, "four-asset", backtest_dir=backtest_dir)
+
+    assert "four-asset strategy - 策略回测" in html
+    assert "回测摘要" in html
+    assert "年化收益" in html
+    assert "20.00%" in html
+    assert "最大回撤" in html
+    assert "-10.00%" in html
+    assert "净值曲线" in html
+    assert "510300.SH" in html
+    assert "/api/strategy-backtests/four-asset.json" in html
+
+
+def _write_backtest(path, *, strategy_id: str) -> None:
+    payload = {
+        "metadata": {
+            "strategy_id": strategy_id,
+            "description": "sample strategy",
+            "method": ["sample method"],
+        },
+        "summary": {
+            "strategy_id": strategy_id,
+            "strategy_name": f"{strategy_id} strategy",
+            "short_name": strategy_id,
+            "start_date": "20200102",
+            "end_date": "20210104",
+            "sessions": 252,
+            "rebalance_count": 3,
+            "strategy_total_return": 0.2,
+            "max_drawdown": -0.1,
+            "sharpe": 1.2,
+            "latest_signal": "sample_signal",
+            "latest_signal_date": "20210104",
+            "latest_weights": {"510300.SH": 0.6, "511880.SH": 0.4},
+            "comparison_assets": [
+                {
+                    "code": "equal_weight",
+                    "annualized_return": 0.1,
+                    "max_drawdown": -0.12,
+                    "sharpe": 0.8,
+                    "calmar": 0.83,
+                }
+            ],
+        },
+        "equity_curve": [
+            {"date": "20200102", "strategy_equity": 1.0, "equal_weight_equity": 1.0},
+            {"date": "20210104", "strategy_equity": 1.2, "equal_weight_equity": 1.1},
+        ],
+        "signals": [{"date": "20210104", "signal": "buy", "target_weights": {"510300.SH": 0.6}}],
+        "validation": {"no_lookahead_bias": True},
+    }
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")

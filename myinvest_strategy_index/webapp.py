@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from collections.abc import Callable
 from datetime import datetime
+from html import escape
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from myinvest_strategy_index.config import Settings, load_settings
+from myinvest_strategy_index.cycle_backtests import get_cycle_backtest_detail, get_cycle_backtest_index
 from myinvest_strategy_index.value_compare import (
     get_chinext_total_return_payload,
     get_four_asset_calmar_payload,
@@ -62,6 +66,13 @@ class StrategyIndexHandler(BaseHTTPRequestHandler):
         if parsed.path in {"/three-asset-compare", "/three-asset-calmar"}:
             self._send_html(render_three_asset_compare_page())
             return
+        if parsed.path == "/strategy-backtests":
+            self._send_html(render_strategy_backtests_page(self.settings))
+            return
+        if parsed.path.startswith("/strategy-backtests/"):
+            strategy_id = parsed.path.removeprefix("/strategy-backtests/").strip("/")
+            self._send_cycle_backtest_page(strategy_id)
+            return
         if parsed.path in {"/api/value-compare/history.json", "/api/strategy-index-compare/history.json"}:
             self._send_history(parsed.query, get_value_compare_payload)
             return
@@ -73,6 +84,13 @@ class StrategyIndexHandler(BaseHTTPRequestHandler):
             return
         if parsed.path in {"/api/three-asset-compare/history.json", "/api/three-asset-calmar/history.json"}:
             self._send_history(parsed.query, get_three_asset_calmar_payload)
+            return
+        if parsed.path == "/api/strategy-backtests/index.json":
+            self._send_json(get_cycle_backtest_index(self.settings))
+            return
+        if parsed.path.startswith("/api/strategy-backtests/") and parsed.path.endswith(".json"):
+            strategy_id = parsed.path.removeprefix("/api/strategy-backtests/").removesuffix(".json").strip("/")
+            self._send_cycle_backtest_json(strategy_id)
             return
         if parsed.path == "/health.json":
             self._send_json({"ok": True, "version": __version__, "time": datetime.now().isoformat(timespec="seconds")})
@@ -108,6 +126,22 @@ class StrategyIndexHandler(BaseHTTPRequestHandler):
             return
         self._send_json(payload)
 
+    def _send_cycle_backtest_json(self, strategy_id: str) -> None:
+        try:
+            payload = get_cycle_backtest_detail(self.settings, strategy_id)
+        except Exception as exc:
+            self._send_json({"ok": False, "error": str(exc)}, status=HTTPStatus.NOT_FOUND)
+            return
+        self._send_json(payload)
+
+    def _send_cycle_backtest_page(self, strategy_id: str) -> None:
+        try:
+            page = render_strategy_backtest_detail_page(self.settings, strategy_id)
+        except Exception as exc:
+            self._send_html(render_not_found_page(str(exc)), status=HTTPStatus.NOT_FOUND)
+            return
+        self._send_html(page)
+
 
 def run(host: str = "0.0.0.0", port: int = 8023) -> None:
     settings = load_settings()
@@ -121,6 +155,7 @@ def run(host: str = "0.0.0.0", port: int = 8023) -> None:
                 "chinext_compare_url": f"http://{host}:{port}/chinext-compare",
                 "four_asset_compare_url": f"http://{host}:{port}/four-asset-compare",
                 "three_asset_compare_url": f"http://{host}:{port}/three-asset-compare",
+                "strategy_backtests_url": f"http://{host}:{port}/strategy-backtests",
                 "cache_dir": str(settings.cache_dir),
                 "tushare_token": bool(settings.tushare_token),
             },
@@ -298,7 +333,7 @@ def render_home_page() -> str:
     </div>
   </div>
   <main>
-    <h2 class="section-title">策略卡片</h2>
+    <h2 class="section-title">策略研究</h2>
     <div class="strategy-grid">
       <a class="strategy-card" href="/value-compare" aria-label="打开策略指数收益曲线对比">
         <div class="card-head">
@@ -353,11 +388,797 @@ def render_home_page() -> str:
         </div>
       </a>
     </div>
+    <h2 class="section-title">策略回测</h2>
+    <div class="strategy-grid">
+      <a class="strategy-card" href="/strategy-backtests" aria-label="打开策略回测集合">
+        <div class="card-head">
+          <h3 class="card-title">Cycle 策略回测集合</h3>
+          <span class="card-tag">strategy-backtests</span>
+        </div>
+        <p class="card-desc">
+          汇总同级 MyInvestCycle 子系统的资产配置、ETF轮动、自由现金流和回归/回撤类策略回测结果，保留净值曲线、指标、最新权重和信号。
+        </p>
+        <div class="card-footer">
+          <span>回测结果 / 策略分类 / 详情页</span>
+          <span class="card-action">打开 →</span>
+        </div>
+      </a>
+    </div>
   </main>
   __MYINVEST_FOOTER__
 </body>
 </html>"""
     return _inject_unified_shell(page)
+
+
+def render_strategy_backtests_page(settings: Settings, *, backtest_dir: Path | None = None) -> str:
+    payload = get_cycle_backtest_index(settings, backtest_dir=backtest_dir)
+    strategies = [item for item in payload.get("strategies", []) if isinstance(item, dict)]
+    grouped: dict[str, list[dict[str, object]]] = {}
+    for item in strategies:
+        grouped.setdefault(str(item.get("category") or "其他策略"), []).append(item)
+    group_html = "\n".join(
+        _cycle_strategy_group_html(category, grouped[category])
+        for category in sorted(grouped)
+    )
+    errors = [item for item in payload.get("errors", []) if isinstance(item, dict)]
+    error_html = ""
+    if errors:
+        rows = "\n".join(
+            f"<li>{_h(item.get('file', '-'))}: {_h(item.get('error', '-'))}</li>"
+            for item in errors
+        )
+        error_html = f"""
+    <section class="notice">
+      <h2>读取异常</h2>
+      <ul>{rows}</ul>
+    </section>"""
+    if not group_html:
+        group_html = '<section class="empty">没有找到 MyInvestCycle 策略回测结果。</section>'
+    page = f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>策略回测 - MyInvestStrategyIndex</title>
+  <style>
+    :root {{
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --text: #1c2430;
+      --muted: #687385;
+      --line: #d9dee7;
+      --accent: #0f766e;
+      --soft: #edf7f5;
+      --bad: #b42318;
+      --good: #157347;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      letter-spacing: 0;
+    }}
+    a {{ color: var(--accent); text-decoration: none; }}
+    a:hover {{ text-decoration: underline; }}
+    .page-header {{
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.97);
+    }}
+    .bar {{
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }}
+    h1 {{ margin: 0; font-size: 20px; font-weight: 700; }}
+    .meta {{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }}
+    .pill {{
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 9px;
+      background: #fff;
+      white-space: nowrap;
+    }}
+    main {{
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 20px 20px 34px;
+      display: grid;
+      gap: 18px;
+    }}
+    .intro {{
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 16px;
+      display: grid;
+      gap: 8px;
+    }}
+    .intro h2, .notice h2 {{
+      margin: 0;
+      font-size: 17px;
+    }}
+    .intro p {{
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }}
+    .category {{
+      display: grid;
+      gap: 10px;
+    }}
+    .category h2 {{
+      margin: 0;
+      font-size: 16px;
+    }}
+    .strategy-list {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 12px;
+    }}
+    .backtest-card {{
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 14px;
+      display: grid;
+      gap: 11px;
+      min-height: 188px;
+    }}
+    .backtest-card:hover {{
+      border-color: #93c5bd;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+    }}
+    .card-head {{
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }}
+    .card-title {{
+      margin: 0;
+      font-size: 17px;
+      line-height: 1.35;
+    }}
+    .card-id {{
+      color: var(--muted);
+      font-size: 12px;
+      word-break: break-all;
+    }}
+    .metrics {{
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }}
+    .metric {{
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      background: #fbfcfd;
+    }}
+    .metric span {{
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 4px;
+    }}
+    .metric strong {{
+      font-size: 14px;
+    }}
+    .card-desc {{
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }}
+    .card-foot {{
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      flex-wrap: wrap;
+    }}
+    .notice, .empty {{
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 16px;
+      color: var(--muted);
+    }}
+    .notice ul {{ margin: 8px 0 0; padding-left: 20px; }}
+    @media (max-width: 760px) {{
+      .bar {{ align-items: flex-start; flex-direction: column; }}
+      .meta {{ justify-content: flex-start; }}
+      .metrics {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+      .strategy-list {{ grid-template-columns: 1fr; }}
+    }}
+  </style>
+</head>
+<body>
+  __MYINVEST_HEADER__
+  <div class="page-header">
+    <div class="bar">
+      <h1>策略回测</h1>
+      <div class="meta">
+        <a class="pill" href="/">首页</a>
+        <span class="pill">MyInvestCycle 结果读取</span>
+        <span class="pill">{_h(payload.get("count", 0))} 个策略</span>
+      </div>
+    </div>
+  </div>
+  <main>
+    <section class="intro">
+      <h2>Cycle 子系统回测集合</h2>
+      <p>这里读取同级 MyInvestCycle 的已生成回测 JSON，按策略类别展示；本页只做结果汇总和详情查看，不改变 Cycle 原有回测引擎。</p>
+      <p>数据源：MyInvestCycle / data / strategy_backtests。API：<a href="/api/strategy-backtests/index.json">/api/strategy-backtests/index.json</a></p>
+    </section>
+    {error_html}
+    {group_html}
+  </main>
+  __MYINVEST_FOOTER__
+</body>
+</html>"""
+    return _inject_unified_shell(page)
+
+
+def render_strategy_backtest_detail_page(
+    settings: Settings,
+    strategy_id: str,
+    *,
+    backtest_dir: Path | None = None,
+) -> str:
+    payload = get_cycle_backtest_detail(settings, strategy_id, backtest_dir=backtest_dir)
+    summary = payload["summary"] if isinstance(payload.get("summary"), dict) else {}
+    metadata = payload["metadata"] if isinstance(payload.get("metadata"), dict) else {}
+    validation = payload["validation"] if isinstance(payload.get("validation"), dict) else {}
+    equity_curve = payload["equity_curve"] if isinstance(payload.get("equity_curve"), list) else []
+    signals = payload["signals"] if isinstance(payload.get("signals"), list) else []
+    comparison_assets = payload["comparison_assets"] if isinstance(payload.get("comparison_assets"), list) else []
+    strategy_name = str(summary.get("strategy_name") or strategy_id)
+    method_items = metadata.get("method") if isinstance(metadata.get("method"), list) else []
+    method_html = ""
+    if method_items:
+        method_html = "<ul>" + "".join(f"<li>{_h(item)}</li>" for item in method_items) + "</ul>"
+    page = f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{_h(strategy_name)} - 策略回测</title>
+  <style>
+    :root {{
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --text: #1c2430;
+      --muted: #687385;
+      --line: #d9dee7;
+      --accent: #0f766e;
+      --soft: #edf7f5;
+      --bad: #b42318;
+      --good: #157347;
+      --blue: #2563eb;
+      --gray: #64748b;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      letter-spacing: 0;
+    }}
+    a {{ color: var(--accent); text-decoration: none; }}
+    a:hover {{ text-decoration: underline; }}
+    .page-header {{
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.97);
+    }}
+    .bar {{
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }}
+    h1 {{ margin: 0; font-size: 20px; font-weight: 700; }}
+    .meta {{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }}
+    .pill {{
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 9px;
+      background: #fff;
+      white-space: nowrap;
+    }}
+    main {{
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 20px 20px 34px;
+      display: grid;
+      gap: 18px;
+    }}
+    .summary {{
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+    }}
+    .summary h2, .section h2 {{
+      margin: 0;
+      font-size: 17px;
+    }}
+    .summary p {{
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.65;
+    }}
+    .metric-grid {{
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+    }}
+    .metric {{
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfd;
+      padding: 10px;
+    }}
+    .metric span {{
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 5px;
+    }}
+    .metric strong {{
+      font-size: 17px;
+    }}
+    .section {{
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+    }}
+    .chart-wrap {{
+      width: 100%;
+      min-height: 340px;
+    }}
+    .chart {{
+      width: 100%;
+      height: auto;
+      display: block;
+      background: #ffffff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }}
+    .legend {{
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 12px;
+    }}
+    .legend span {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }}
+    .swatch {{
+      width: 18px;
+      height: 3px;
+      border-radius: 999px;
+      display: inline-block;
+    }}
+    table {{
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }}
+    th, td {{
+      border-bottom: 1px solid var(--line);
+      padding: 9px 8px;
+      text-align: left;
+      vertical-align: top;
+    }}
+    th {{
+      color: var(--muted);
+      font-weight: 700;
+      background: #fbfcfd;
+    }}
+    .num {{ text-align: right; font-variant-numeric: tabular-nums; }}
+    .grid-2 {{
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 18px;
+    }}
+    .empty {{
+      color: var(--muted);
+      font-size: 13px;
+    }}
+    ul {{
+      margin: 0;
+      padding-left: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.65;
+    }}
+    @media (max-width: 980px) {{
+      .metric-grid {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }}
+      .grid-2 {{ grid-template-columns: 1fr; }}
+    }}
+    @media (max-width: 680px) {{
+      .bar {{ align-items: flex-start; flex-direction: column; }}
+      .meta {{ justify-content: flex-start; }}
+      .metric-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+      th, td {{ padding: 8px 6px; }}
+    }}
+  </style>
+</head>
+<body>
+  __MYINVEST_HEADER__
+  <div class="page-header">
+    <div class="bar">
+      <h1>{_h(strategy_name)}</h1>
+      <div class="meta">
+        <a class="pill" href="/">首页</a>
+        <a class="pill" href="/strategy-backtests">策略回测</a>
+        <a class="pill" href="/api/strategy-backtests/{_h(summary.get('strategy_id') or strategy_id)}.json">JSON</a>
+      </div>
+    </div>
+  </div>
+  <main>
+    <section class="summary">
+      <h2>回测摘要</h2>
+      <p>{_h(metadata.get("description") or "该策略来自 MyInvestCycle 子系统的已生成回测结果。")}</p>
+      <div class="metric-grid">
+        {_metric_card("年化收益", _pct(summary.get("annualized_return")))}
+        {_metric_card("累计收益", _pct(summary.get("total_return")))}
+        {_metric_card("最大回撤", _pct(summary.get("max_drawdown")))}
+        {_metric_card("Sharpe", _number(summary.get("sharpe"), digits=3))}
+        {_metric_card("Calmar", _number(summary.get("calmar"), digits=3))}
+        {_metric_card("调仓次数", _number(summary.get("rebalance_count"), digits=0))}
+      </div>
+      <p>区间：{_date(summary.get("start_date"))} 至 {_date(summary.get("end_date"))}；交易日：{_h(summary.get("sessions", "-"))}；最新信号：{_h(summary.get("latest_signal") or "-")}（{_date(summary.get("latest_signal_date"))}）。</p>
+    </section>
+    <section class="section">
+      <h2>净值曲线</h2>
+      <div class="legend">
+        <span><i class="swatch" style="background: var(--accent);"></i>策略净值</span>
+        <span><i class="swatch" style="background: var(--gray);"></i>等权参考</span>
+      </div>
+      <div class="chart-wrap">{_render_cycle_equity_svg(equity_curve)}</div>
+    </section>
+    <div class="grid-2">
+      <section class="section">
+        <h2>最新权重</h2>
+        {_weights_table(summary.get("latest_weights"))}
+      </section>
+      <section class="section">
+        <h2>对比资产</h2>
+        {_comparison_assets_table(comparison_assets)}
+      </section>
+    </div>
+    <div class="grid-2">
+      <section class="section">
+        <h2>最近信号</h2>
+        {_signals_table(signals)}
+      </section>
+      <section class="section">
+        <h2>验证与方法</h2>
+        {_validation_table(validation)}
+        {method_html}
+      </section>
+    </div>
+  </main>
+  __MYINVEST_FOOTER__
+</body>
+</html>"""
+    return _inject_unified_shell(page)
+
+
+def render_not_found_page(message: str) -> str:
+    page = f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>未找到 - MyInvestStrategyIndex</title>
+  <style>
+    body {{
+      margin: 0;
+      font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+      background: #f6f7f9;
+      color: #1c2430;
+    }}
+    main {{
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      display: grid;
+      gap: 14px;
+    }}
+    a {{ color: #0f766e; text-decoration: none; }}
+  </style>
+</head>
+<body>
+  __MYINVEST_HEADER__
+  <main>
+    <h1>未找到策略回测结果</h1>
+    <p>{_h(message)}</p>
+    <p><a href="/strategy-backtests">返回策略回测列表</a></p>
+  </main>
+  __MYINVEST_FOOTER__
+</body>
+</html>"""
+    return _inject_unified_shell(page)
+
+
+def _cycle_strategy_group_html(category: str, items: list[dict[str, object]]) -> str:
+    cards = "\n".join(_cycle_strategy_card_html(item) for item in items)
+    return f"""
+    <section class="category">
+      <h2>{_h(category)}（{len(items)}）</h2>
+      <div class="strategy-list">
+        {cards}
+      </div>
+    </section>"""
+
+
+def _cycle_strategy_card_html(item: dict[str, object]) -> str:
+    strategy_id = str(item.get("strategy_id") or "")
+    description = str(item.get("description") or "")
+    if len(description) > 86:
+        description = description[:86] + "..."
+    description = description or "查看该策略的净值曲线、核心指标、最新权重和回测信号。"
+    date_range = f"{_date(item.get('start_date'))} 至 {_date(item.get('end_date'))}"
+    return f"""
+        <a class="backtest-card" href="/strategy-backtests/{_h(strategy_id)}">
+          <div class="card-head">
+            <div>
+              <h3 class="card-title">{_h(item.get("strategy_name") or strategy_id)}</h3>
+              <div class="card-id">{_h(strategy_id)}</div>
+            </div>
+            <span class="pill">{_h(item.get("category") or "-")}</span>
+          </div>
+          <p class="card-desc">{_h(description)}</p>
+          <div class="metrics">
+            {_metric_card("年化", _pct(item.get("annualized_return")))}
+            {_metric_card("回撤", _pct(item.get("max_drawdown")))}
+            {_metric_card("Sharpe", _number(item.get("sharpe"), digits=2))}
+            {_metric_card("Calmar", _number(item.get("calmar"), digits=2))}
+          </div>
+          <div class="card-foot">
+            <span>{_h(date_range)}</span>
+            <span>调仓 {_number(item.get("rebalance_count"), digits=0)}</span>
+          </div>
+        </a>"""
+
+
+def _metric_card(label: str, value: str) -> str:
+    return f'<div class="metric"><span>{_h(label)}</span><strong>{_h(value)}</strong></div>'
+
+
+def _weights_table(value: object) -> str:
+    if not isinstance(value, dict) or not value:
+        return '<div class="empty">无权重数据。</div>'
+    rows = []
+    for code, weight in sorted(value.items(), key=lambda item: _as_float(item[1]) or 0.0, reverse=True):
+        rows.append(f"<tr><td>{_h(code)}</td><td class=\"num\">{_pct(weight)}</td></tr>")
+    return f"<table><thead><tr><th>标的</th><th class=\"num\">权重</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
+
+
+def _comparison_assets_table(items: object) -> str:
+    if not isinstance(items, list) or not items:
+        return '<div class="empty">无对比资产数据。</div>'
+    rows = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name") or item.get("code") or item.get("asset") or "-"
+        rows.append(
+            "<tr>"
+            f"<td>{_h(name)}</td>"
+            f"<td class=\"num\">{_pct(item.get('annualized_return'))}</td>"
+            f"<td class=\"num\">{_pct(item.get('max_drawdown'))}</td>"
+            f"<td class=\"num\">{_number(item.get('sharpe'), digits=2)}</td>"
+            f"<td class=\"num\">{_number(item.get('calmar'), digits=2)}</td>"
+            "</tr>"
+        )
+    if not rows:
+        return '<div class="empty">无对比资产数据。</div>'
+    return (
+        "<table><thead><tr><th>资产</th><th class=\"num\">年化</th><th class=\"num\">最大回撤</th>"
+        "<th class=\"num\">Sharpe</th><th class=\"num\">Calmar</th></tr></thead>"
+        f"<tbody>{''.join(rows)}</tbody></table>"
+    )
+
+
+def _signals_table(items: object) -> str:
+    if not isinstance(items, list) or not items:
+        return '<div class="empty">无信号数据。</div>'
+    rows = []
+    for item in items[-10:][::-1]:
+        if not isinstance(item, dict):
+            continue
+        date = item.get("date") or item.get("trade_date") or item.get("signal_date") or "-"
+        signal = item.get("signal") or item.get("action") or item.get("selected_asset") or item.get("regime") or "-"
+        weights = item.get("target_weights") or item.get("weights") or {}
+        rows.append(
+            "<tr>"
+            f"<td>{_date(date)}</td>"
+            f"<td>{_h(signal)}</td>"
+            f"<td>{_h(_weights_inline(weights))}</td>"
+            "</tr>"
+        )
+    if not rows:
+        return '<div class="empty">无信号数据。</div>'
+    return "<table><thead><tr><th>日期</th><th>信号</th><th>目标权重</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
+
+
+def _validation_table(value: object) -> str:
+    if not isinstance(value, dict) or not value:
+        return '<div class="empty">无验证数据。</div>'
+    rows = []
+    for key, raw in value.items():
+        display = "是" if raw is True else "否" if raw is False else str(raw)
+        rows.append(f"<tr><td>{_h(key)}</td><td>{_h(display)}</td></tr>")
+    return f"<table><thead><tr><th>项目</th><th>结果</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
+
+
+def _render_cycle_equity_svg(records: object) -> str:
+    if not isinstance(records, list) or len(records) < 2:
+        return '<div class="empty">无净值曲线数据。</div>'
+    clean_records = [item for item in records if isinstance(item, dict)]
+    if len(clean_records) < 2:
+        return '<div class="empty">无净值曲线数据。</div>'
+    max_points = 900
+    step = max(1, math.ceil(len(clean_records) / max_points))
+    sampled = clean_records[::step]
+    if sampled[-1] is not clean_records[-1]:
+        sampled.append(clean_records[-1])
+    series = [
+        ("strategy_equity", "策略净值", "#0f766e"),
+        ("equal_weight_equity", "等权参考", "#64748b"),
+    ]
+    values: list[float] = []
+    for record in sampled:
+        for key, _, _ in series:
+            value = _as_float(record.get(key))
+            if value is not None:
+                values.append(value)
+    if not values:
+        return '<div class="empty">无净值曲线数据。</div>'
+    min_value = min(values)
+    max_value = max(values)
+    if math.isclose(min_value, max_value):
+        min_value -= 0.05
+        max_value += 0.05
+    width = 980
+    height = 340
+    left = 58
+    right = 18
+    top = 24
+    bottom = 42
+    plot_w = width - left - right
+    plot_h = height - top - bottom
+
+    def x_at(index: int) -> float:
+        return left + plot_w * (index / max(len(sampled) - 1, 1))
+
+    def y_at(value: float) -> float:
+        return top + plot_h * (1 - (value - min_value) / (max_value - min_value))
+
+    paths = []
+    for key, label, color in series:
+        points = []
+        for index, record in enumerate(sampled):
+            value = _as_float(record.get(key))
+            if value is None:
+                continue
+            cmd = "M" if not points else "L"
+            points.append(f"{cmd}{x_at(index):.2f},{y_at(value):.2f}")
+        if points:
+            paths.append(
+                f'<path d="{" ".join(points)}" fill="none" stroke="{color}" stroke-width="2.4" '
+                f'stroke-linejoin="round" stroke-linecap="round"><title>{_h(label)}</title></path>'
+            )
+    grid = []
+    for i in range(5):
+        y = top + plot_h * i / 4
+        value = max_value - (max_value - min_value) * i / 4
+        grid.append(
+            f'<line x1="{left}" x2="{width - right}" y1="{y:.2f}" y2="{y:.2f}" stroke="#e5e7eb" />'
+            f'<text x="{left - 8}" y="{y + 4:.2f}" text-anchor="end" fill="#687385" font-size="11">{_h(f"{value:.2f}")}</text>'
+        )
+    start_date = _date(sampled[0].get("date") or sampled[0].get("trade_date"))
+    end_date = _date(sampled[-1].get("date") or sampled[-1].get("trade_date"))
+    return f"""
+        <svg class="chart" viewBox="0 0 {width} {height}" role="img" aria-label="策略净值曲线">
+          <rect x="0" y="0" width="{width}" height="{height}" fill="#ffffff" />
+          {"".join(grid)}
+          <line x1="{left}" x2="{width - right}" y1="{height - bottom}" y2="{height - bottom}" stroke="#cbd5e1" />
+          <line x1="{left}" x2="{left}" y1="{top}" y2="{height - bottom}" stroke="#cbd5e1" />
+          {"".join(paths)}
+          <text x="{left}" y="{height - 14}" fill="#687385" font-size="12">{_h(start_date)}</text>
+          <text x="{width - right}" y="{height - 14}" text-anchor="end" fill="#687385" font-size="12">{_h(end_date)}</text>
+        </svg>"""
+
+
+def _weights_inline(value: object) -> str:
+    if not isinstance(value, dict) or not value:
+        return "-"
+    parts = []
+    for code, weight in sorted(value.items(), key=lambda item: _as_float(item[1]) or 0.0, reverse=True):
+        parts.append(f"{code} {_pct(weight)}")
+    return "；".join(parts)
+
+
+def _pct(value: object) -> str:
+    number = _as_float(value)
+    if number is None:
+        return "-"
+    return f"{number:.2%}"
+
+
+def _number(value: object, *, digits: int = 2) -> str:
+    number = _as_float(value)
+    if number is None:
+        return "-"
+    if digits <= 0:
+        return f"{number:.0f}"
+    return f"{number:.{digits}f}"
+
+
+def _date(value: object) -> str:
+    text = str(value or "").strip()
+    if len(text) == 8 and text.isdigit():
+        return f"{text[:4]}-{text[4:6]}-{text[6:8]}"
+    return text or "-"
+
+
+def _h(value: object) -> str:
+    return escape(str(value), quote=True)
+
+
+def _as_float(value: object) -> float | None:
+    try:
+        if value is None:
+            return None
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if math.isnan(number) or math.isinf(number):
+        return None
+    return number
 
 
 def _strategy_calmar_panel_html() -> str:
