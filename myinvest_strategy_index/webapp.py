@@ -404,7 +404,7 @@ def render_home_page() -> str:
           <span class="card-tag">cashflow-growth</span>
         </div>
         <p class="card-desc">
-          参照 value-compare 的完整交互，只保留自由现金流R和创成长R两个全收益指数，并动态展示双指数等权、风险平价和最大回撤风险评价组合。
+          参照 value-compare 的完整交互，只保留自由现金流R和创成长R两个全收益指数，并动态展示双指数等权、风险平价和最大回撤风险平价组合。
         </p>
         <div class="card-footer">
           <span>双指数 / 等权 / 风险评价</span>
@@ -1243,7 +1243,7 @@ def _cashflow_growth_intro_panel_html() -> str:
         <ul class="conclusion-list">
           <li><span class="conclusion-key">对比对象：</span>自由现金流R收益指数、创成长R收益指数。</li>
           <li><span class="conclusion-key">实际数据源：</span>480092.CNI 自由现金流R、CN2296.CNI 创成长R。</li>
-          <li><span class="conclusion-key">展示方式：</span>沿用 value-compare 的曲线、回撤、散点、指标排序、共同区间、拖动缩放和更新数据功能；同时基于这两个指数动态计算等权组合、滚动60日风险平价组合和过去10年逆最大回撤风险评价组合。</li>
+          <li><span class="conclusion-key">展示方式：</span>沿用 value-compare 的曲线、回撤、散点、指标排序、共同区间、拖动缩放和更新数据功能；同时基于这两个指数动态计算等权组合、滚动60日风险平价组合和过去10年逆最大回撤风险平价组合。</li>
         </ul>
       </div>
     </section>"""
@@ -2491,9 +2491,9 @@ function renderRiskParityWeights(range) {
     }),
     appendWeightPanel({
       rows: state.dynamicDrawdownRiskRows,
-      titlePrefix: "最大回撤风险评价比例",
+      titlePrefix: "最大回撤风险平价比例",
       detail: "过去10年最大回撤绝对值倒数",
-      emptyText: "最大回撤风险评价：请至少勾选两个真实标的，并保证样本足够。",
+      emptyText: "最大回撤风险平价：请至少勾选两个真实标的，并保证样本足够。",
       range,
       includeRisks: true,
     }),
@@ -3043,7 +3043,7 @@ def render_cashflow_growth_compare_page() -> str:
         ): (
             "最早起模式按最早可用指数开始展示。双指数页只对比自由现金流R和创成长R，"
             "并提供当前勾选成分的双指数等权组合、滚动60日风险平价组合和"
-            "过去10年逆最大回撤风险评价组合。"
+            "过去10年逆最大回撤风险平价组合。"
             "上证指数作为灰色背景线，仅用于观察市场背景，不参与指标排序。"
         ),
         "2012起": "最早起",

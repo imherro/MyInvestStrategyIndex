@@ -263,7 +263,7 @@ CASHFLOW_GROWTH_COMPARE_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = (
     ),
     ValueCompareInstrument(
         code="VIRTUAL_CASHFLOW_GROWTH_DRAWDOWN_RISK",
-        name="最大回撤风险评价组合",
+        name="最大回撤风险平价组合",
         kind="synthetic_drawdown_risk",
         source="自由现金流R/创成长R 最近10年最大回撤绝对值倒数加权",
         color="#7C2D12",
