@@ -404,7 +404,7 @@ def render_home_page() -> str:
           <span class="card-tag">cashflow-growth</span>
         </div>
         <p class="card-desc">
-          参照 value-compare 的完整交互，只保留自由现金流R和创成长R两个全收益指数，并动态展示双指数等权、风险平价和最大回撤风险平价组合。
+          参照 value-compare 的完整交互，只保留自由现金流R和创成长R两个全收益指数，并展示双指数等权、风险平价、最大回撤风险平价和最优再平衡组合。
         </p>
         <div class="card-footer">
           <span>双指数 / 等权 / 风险评价</span>
@@ -1243,7 +1243,7 @@ def _cashflow_growth_intro_panel_html() -> str:
         <ul class="conclusion-list">
           <li><span class="conclusion-key">对比对象：</span>自由现金流R收益指数、创成长R收益指数。</li>
           <li><span class="conclusion-key">实际数据源：</span>480092.CNI 自由现金流R、CN2296.CNI 创成长R。</li>
-          <li><span class="conclusion-key">展示方式：</span>沿用 value-compare 的曲线、回撤、散点、指标排序、共同区间、拖动缩放和更新数据功能；同时基于这两个指数动态计算等权组合、滚动60日风险平价组合和过去10年逆最大回撤风险平价组合。</li>
+          <li><span class="conclusion-key">展示方式：</span>沿用 value-compare 的曲线、回撤、散点、指标排序、共同区间、拖动缩放和更新数据功能；同时基于这两个指数动态计算等权组合、滚动60日风险平价组合、过去10年逆最大回撤风险平价组合，并回测最大回撤风险平价最优再平衡组合。</li>
         </ul>
       </div>
     </section>"""
@@ -1384,6 +1384,19 @@ def render_etf_compare_page(top_panel_html: str = "") -> str:
     .conclusion-key {
       color: var(--accent);
       font-weight: 700;
+    }
+    .rebalance-summary {
+      margin-bottom: 10px;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .rebalance-table-wrap {
+      overflow-x: auto;
+    }
+    tr.best-row td {
+      background: #f2fbf8;
+      font-weight: 650;
     }
     .content { padding: 14px; }
     .stack { display: grid; gap: 16px; }
@@ -1666,6 +1679,29 @@ def render_etf_compare_page(top_panel_html: str = "") -> str:
   </div>
   <main>
     __TOP_PANEL__
+    <section id="rebalance-analysis-section" class="conclusion-panel" hidden>
+      <h2 class="panel-title">再平衡测试结论</h2>
+      <div class="content">
+        <div id="rebalance-summary" class="rebalance-summary"></div>
+        <div class="rebalance-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>规则</th>
+                <th>年化收益</th>
+                <th>最大回撤</th>
+                <th>Calmar</th>
+                <th>Sharpe</th>
+                <th>年化换手</th>
+                <th>调仓次数</th>
+                <th>期末权重</th>
+              </tr>
+            </thead>
+            <tbody id="rebalance-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
     <section class="control-panel">
       <h2 class="panel-title">对比设置</h2>
       <div class="content controls-layout">
@@ -1830,6 +1866,9 @@ const dom = {
   errorsSection: document.getElementById("errors-section"),
   errors: document.getElementById("errors"),
   riskParityWeights: document.getElementById("risk-parity-weights"),
+  rebalanceSection: document.getElementById("rebalance-analysis-section"),
+  rebalanceSummary: document.getElementById("rebalance-summary"),
+  rebalanceBody: document.getElementById("rebalance-body"),
   refresh: document.getElementById("refresh-data"),
   reset: document.getElementById("reset-range"),
   panLeft: document.getElementById("pan-left"),
@@ -2475,7 +2514,57 @@ function renderAll() {
   renderBarChart(series);
   renderMetricsTable(series);
   renderRiskParityWeights(range);
+  renderRebalanceAnalysis();
   renderErrors();
+}
+
+function renderRebalanceAnalysis() {
+  if (!dom.rebalanceSection) return;
+  const analysis = state.payload?.rebalance_analysis;
+  if (!analysis || !analysis.ok || !Array.isArray(analysis.candidates) || !analysis.candidates.length) {
+    dom.rebalanceSection.hidden = true;
+    return;
+  }
+  dom.rebalanceSection.hidden = false;
+  const best = analysis.candidates.find((item) => item.id === analysis.best_rule_id) || analysis.candidates[0];
+  const metrics = best.metrics || {};
+  dom.rebalanceSummary.textContent = (
+    `${analysis.start_date} 至 ${analysis.end_date}，以 ${analysis.objective || "Calmar"} 为目标，`
+    + `当前样本最优为${analysis.best_rule_name || best.name}；`
+    + `年化收益 ${pct(metrics.annualized_return)}，最大回撤 ${pct(metrics.max_drawdown)}，`
+    + `Calmar ${ratioText(metrics.calmar)}。`
+  );
+  dom.rebalanceBody.innerHTML = "";
+  analysis.candidates.forEach((candidate) => {
+    const row = document.createElement("tr");
+    row.classList.toggle("best-row", candidate.id === analysis.best_rule_id);
+    const candidateMetrics = candidate.metrics || {};
+    [
+      candidate.name,
+      pct(candidateMetrics.annualized_return),
+      pct(candidateMetrics.max_drawdown),
+      ratioText(candidateMetrics.calmar),
+      ratioText(candidateMetrics.sharpe),
+      pct(candidateMetrics.annualized_turnover),
+      String(candidateMetrics.rebalance_count ?? "-"),
+      weightsText(candidate.final_weights),
+    ].forEach((value, index) => {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      if (index > 0) cell.className = "num";
+      row.appendChild(cell);
+    });
+    dom.rebalanceBody.appendChild(row);
+  });
+}
+
+function weightsText(weights) {
+  if (!weights || typeof weights !== "object") return "-";
+  const parts = Object.entries(weights)
+    .filter(([, weight]) => Number.isFinite(weight))
+    .sort((left, right) => right[1] - left[1])
+    .map(([code, weight]) => `${instrumentByCode(code).name} ${pct(weight)}`);
+  return parts.length ? parts.join("；") : "-";
 }
 
 function renderRiskParityWeights(range) {
@@ -3042,8 +3131,8 @@ def render_cashflow_growth_compare_page() -> str:
             "480092 为自由现金流R收益指数点位代理。"
         ): (
             "最早起模式按最早可用指数开始展示。双指数页只对比自由现金流R和创成长R，"
-            "并提供当前勾选成分的双指数等权组合、滚动60日风险平价组合和"
-            "过去10年逆最大回撤风险平价组合。"
+            "并提供当前勾选成分的双指数等权组合、滚动60日风险平价组合、"
+            "过去10年逆最大回撤风险平价组合，以及按 Calmar 选优的最大回撤风险平价最优再平衡组合。"
             "上证指数作为灰色背景线，仅用于观察市场背景，不参与指标排序。"
         ),
         "2012起": "最早起",

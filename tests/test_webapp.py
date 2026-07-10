@@ -137,6 +137,11 @@ def test_cashflow_growth_compare_page_renders_two_index_shell() -> None:
     assert "双指数等权组合" in html
     assert "滚动60日风险平价组合" in html
     assert "过去10年逆最大回撤风险平价组合" in html
+    assert "最大回撤风险平价最优再平衡组合" in html
+    assert "再平衡测试结论" in html
+    assert 'id="rebalance-analysis-section"' in html
+    assert "renderRebalanceAnalysis" in html
+    assert "best_rule_name" in html
     assert "最大回撤风险平价比例" in html
     assert "inverseDrawdownWeights" in html
     assert "dynamicDrawdownRiskRows" in html

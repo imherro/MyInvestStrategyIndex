@@ -160,7 +160,7 @@ def test_cashflow_growth_payload_keeps_two_indices_and_same_virtual_features(tmp
 
     assert payload["ok"] is True
     assert not payload["errors"]
-    assert len(payload["instruments"]) == 5
+    assert len(payload["instruments"]) == 6
     assert payload["background"]["code"] == "000001.SH"
     assert set(payload["series"]) == {
         "480092.CNI",
@@ -168,16 +168,39 @@ def test_cashflow_growth_payload_keeps_two_indices_and_same_virtual_features(tmp
         "VIRTUAL_CASHFLOW_GROWTH_EQUAL_WEIGHT",
         "VIRTUAL_CASHFLOW_GROWTH_RISK_PARITY",
         "VIRTUAL_CASHFLOW_GROWTH_DRAWDOWN_RISK",
+        "VIRTUAL_CASHFLOW_GROWTH_DRAWDOWN_REBALANCED_BEST",
     }
     assert payload["series"]["480092.CNI"][1]["value"] == 1200.0
     assert payload["series"]["CN2296.CNI"][1]["value"] == 1100.0
     assert payload["series"]["VIRTUAL_CASHFLOW_GROWTH_EQUAL_WEIGHT"][1]["value"] == 1.15
     assert payload["series"]["VIRTUAL_CASHFLOW_GROWTH_RISK_PARITY"][1]["value"] == 1.15
     assert payload["series"]["VIRTUAL_CASHFLOW_GROWTH_DRAWDOWN_RISK"][1]["value"] == 1.15
+    assert payload["series"]["VIRTUAL_CASHFLOW_GROWTH_DRAWDOWN_REBALANCED_BEST"][1]["value"] == 1.15
+    assert payload["rebalance_analysis"]["ok"] is True
+    assert payload["rebalance_analysis"]["objective"] == "Calmar"
+    assert payload["rebalance_analysis"]["best_rule_name"]
+    candidate_ids = {item["id"] for item in payload["rebalance_analysis"]["candidates"]}
+    assert {
+        "none",
+        "daily",
+        "monthly",
+        "quarterly",
+        "semiannual",
+        "annual",
+        "threshold_5",
+        "threshold_10",
+        "threshold_15",
+    } == candidate_ids
     drawdown_risk = next(
         item for item in payload["instruments"] if item["code"] == "VIRTUAL_CASHFLOW_GROWTH_DRAWDOWN_RISK"
     )
     assert drawdown_risk["name"] == "最大回撤风险平价组合"
+    best_rebalanced = next(
+        item
+        for item in payload["instruments"]
+        if item["code"] == "VIRTUAL_CASHFLOW_GROWTH_DRAWDOWN_REBALANCED_BEST"
+    )
+    assert best_rebalanced["name"] == "最大回撤风险平价最优再平衡组合"
     assert payload["background_series"][1]["value"] == 1050.0
 
 
