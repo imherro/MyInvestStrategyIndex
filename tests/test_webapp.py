@@ -87,6 +87,9 @@ def test_value_compare_page_renders_strategy_index_shell() -> None:
     assert "buildRiskParityRows" in html
     assert "inverseVolatilityWeights" in html
     assert "dynamicRiskParityRows" in html
+    assert 'id="risk-parity-weights"' in html
+    assert "renderRiskParityWeights" in html
+    assert "风险平价最新比例" in html
     assert "上证指数作为灰色背景线" in html
     assert "background_series" in html
     assert "backgroundNormalizedSeries" in html
@@ -128,6 +131,9 @@ def test_cashflow_growth_compare_page_renders_two_index_shell() -> None:
     assert "480092.CNI 自由现金流R、CN2296.CNI 创成长R" in html
     assert "双指数等权组合" in html
     assert "滚动60日风险平价组合" in html
+    assert 'id="risk-parity-weights"' in html
+    assert "风险平价最新比例" in html
+    assert "latest.weights" in html
     assert "上证指数作为灰色背景线" in html
     assert "Calmar 优化结论" not in html
     assert "国信价值全收益" not in html

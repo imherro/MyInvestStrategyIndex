@@ -1483,6 +1483,53 @@ def render_etf_compare_page(top_panel_html: str = "") -> str:
     }
     .status.error { color: var(--bad); }
     .status.ok { color: var(--good); }
+    .risk-parity-weights {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfd;
+      font-size: 12px;
+    }
+    .risk-parity-weights[hidden] {
+      display: none;
+    }
+    .weight-title {
+      color: var(--muted);
+      font-weight: 650;
+      line-height: 1.45;
+    }
+    .weight-row {
+      display: grid;
+      grid-template-columns: minmax(96px, 1fr) minmax(88px, 2fr) 54px;
+      gap: 8px;
+      align-items: center;
+    }
+    .weight-name {
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .weight-bar {
+      height: 8px;
+      border-radius: 999px;
+      background: #e5e7eb;
+      overflow: hidden;
+    }
+    .weight-fill {
+      height: 100%;
+      border-radius: inherit;
+      background: var(--accent);
+    }
+    .weight-value {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+      font-weight: 650;
+    }
     .chart-wrap {
       padding: 12px 14px 14px;
     }
@@ -1668,6 +1715,7 @@ def render_etf_compare_page(top_panel_html: str = "") -> str:
             <button id="refresh-data" type="button">更新数据</button>
           </div>
           <div id="status" class="status">准备加载数据...</div>
+          <div id="risk-parity-weights" class="risk-parity-weights" hidden></div>
         </div>
         <div class="note control-note">
           2012起模式按最早可用 ETF 开始展示；后上市 ETF 从上市日对应的虚拟等权ETF位置接上。虚拟等权ETF按 512890、510500、510300、159915 四只真实 ETF 中当日已有数据的成分动态等权；480092 为自由现金流R收益指数点位代理。
@@ -1779,6 +1827,7 @@ const dom = {
   metricsBody: document.getElementById("metrics-body"),
   errorsSection: document.getElementById("errors-section"),
   errors: document.getElementById("errors"),
+  riskParityWeights: document.getElementById("risk-parity-weights"),
   refresh: document.getElementById("refresh-data"),
   reset: document.getElementById("reset-range"),
   panLeft: document.getElementById("pan-left"),
@@ -2205,14 +2254,15 @@ function buildDynamicSyntheticRows(range) {
 
 function buildRiskParityRows(range) {
   if (!RISK_PARITY_CODE) return [];
-  const componentRows = selectedComponentCodes()
-    .map((code) => rowsInRange(code, range))
-    .filter((rows) => rows.length >= 2);
-  if (componentRows.length < 2) return [];
+  const componentItems = selectedComponentCodes()
+    .map((code) => ({ code, rows: rowsInRange(code, range) }))
+    .filter((item) => item.rows.length >= 2);
+  if (componentItems.length < 2) return [];
 
   const allDates = new Set();
-  const returnMaps = componentRows.map((rows) => {
+  const returnMaps = componentItems.map((item) => {
     const returns = new Map();
+    const rows = item.rows;
     rows.forEach((row) => allDates.add(row.dateMs));
     rows.forEach((row, index) => {
       if (index === 0) return;
@@ -2225,6 +2275,7 @@ function buildRiskParityRows(range) {
   const trailingReturns = returnMaps.map(() => []);
   let value = 1;
   return dates.map((dateMs, index) => {
+    let latestWeights = {};
     const available = returnMaps
       .map((returns, assetIndex) => ({
         assetIndex,
@@ -2234,6 +2285,9 @@ function buildRiskParityRows(range) {
       .filter((item) => Number.isFinite(item.dailyReturn));
     if (index > 0 && available.length) {
       const weights = inverseVolatilityWeights(available.map((item) => item.volatility));
+      latestWeights = Object.fromEntries(
+        available.map((item, itemIndex) => [componentItems[item.assetIndex].code, weights[itemIndex]])
+      );
       const portfolioReturn = available.reduce((sum, item, itemIndex) => sum + item.dailyReturn * weights[itemIndex], 0);
       value *= 1 + portfolioReturn;
     }
@@ -2241,7 +2295,7 @@ function buildRiskParityRows(range) {
       const dailyReturn = returns.get(dateMs);
       if (Number.isFinite(dailyReturn)) trailingReturns[assetIndex].push(dailyReturn);
     });
-    return { dateMs, close: value, value };
+    return { dateMs, close: value, value, weights: latestWeights };
   });
 }
 
@@ -2314,6 +2368,10 @@ function renderAll() {
     clearSvg(dom.valueChart);
     clearSvg(dom.drawdownChart);
     clearSvg(dom.barChart);
+    if (dom.riskParityWeights) {
+      dom.riskParityWeights.innerHTML = "";
+      dom.riskParityWeights.hidden = true;
+    }
     return;
   }
   dom.start.value = fmtDate(range.start);
@@ -2330,7 +2388,66 @@ function renderAll() {
   renderLineChart(dom.drawdownChart, DRAW_BOX, series, "drawdown");
   renderBarChart(series);
   renderMetricsTable(series);
+  renderRiskParityWeights(range);
   renderErrors();
+}
+
+function renderRiskParityWeights(range) {
+  if (!dom.riskParityWeights) return;
+  dom.riskParityWeights.innerHTML = "";
+  if (!RISK_PARITY_CODE) {
+    dom.riskParityWeights.hidden = true;
+    return;
+  }
+  dom.riskParityWeights.hidden = false;
+  const componentCodes = selectedComponentCodes();
+  if (componentCodes.length < 2) {
+    appendRiskParityMessage("风险平价比例：请至少勾选两个真实标的。");
+    return;
+  }
+  const latest = [...state.dynamicRiskParityRows]
+    .reverse()
+    .find((row) => row.dateMs >= range.start && row.dateMs <= range.end && row.weights && Object.keys(row.weights).length);
+  if (!latest) {
+    appendRiskParityMessage("风险平价比例：样本不足，暂未形成可显示权重。");
+    return;
+  }
+  const title = document.createElement("div");
+  title.className = "weight-title";
+  title.textContent = `风险平价最新比例（滚动60日波动率倒数，截至 ${fmtDate(latest.dateMs)}）`;
+  dom.riskParityWeights.appendChild(title);
+  componentCodes
+    .filter((code) => Number.isFinite(latest.weights[code]))
+    .sort((left, right) => latest.weights[right] - latest.weights[left])
+    .forEach((code) => {
+      const instrument = instrumentByCode(code);
+      const weight = latest.weights[code];
+      const row = document.createElement("div");
+      row.className = "weight-row";
+      const name = document.createElement("div");
+      name.className = "weight-name";
+      name.title = instrument.name;
+      name.textContent = instrument.name;
+      const bar = document.createElement("div");
+      bar.className = "weight-bar";
+      const fill = document.createElement("div");
+      fill.className = "weight-fill";
+      fill.style.background = instrument.color || "var(--accent)";
+      fill.style.width = `${Math.max(0, Math.min(100, weight * 100)).toFixed(2)}%`;
+      bar.appendChild(fill);
+      const value = document.createElement("div");
+      value.className = "weight-value";
+      value.textContent = pct(weight);
+      row.append(name, bar, value);
+      dom.riskParityWeights.appendChild(row);
+    });
+}
+
+function appendRiskParityMessage(text) {
+  const message = document.createElement("div");
+  message.className = "weight-title";
+  message.textContent = text;
+  dom.riskParityWeights.appendChild(message);
 }
 
 function renderLineChart(svg, box, series, mode, background = null) {
