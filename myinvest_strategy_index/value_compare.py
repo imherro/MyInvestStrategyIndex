@@ -231,6 +231,37 @@ THREE_ASSET_CALMAR_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = (
     ),
 )
 
+CASHFLOW_GROWTH_COMPARE_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = (
+    ValueCompareInstrument(
+        code="480092.CNI",
+        name="自由现金流R收益指数",
+        kind="index",
+        source="Tushare index_daily",
+        color="#B23A48",
+    ),
+    ValueCompareInstrument(
+        code="CN2296.CNI",
+        name="创成长R收益指数",
+        kind="index",
+        source="Tushare index_daily",
+        color="#0F766E",
+    ),
+    ValueCompareInstrument(
+        code="VIRTUAL_CASHFLOW_GROWTH_EQUAL_WEIGHT",
+        name="双指数等权组合",
+        kind="synthetic_equal_weight",
+        source="自由现金流R/创成长R 动态等权",
+        color="#111827",
+    ),
+    ValueCompareInstrument(
+        code="VIRTUAL_CASHFLOW_GROWTH_RISK_PARITY",
+        name="双指数风险平价组合",
+        kind="synthetic_risk_parity",
+        source="自由现金流R/创成长R 滚动60日波动率倒数加权",
+        color="#2563EB",
+    ),
+)
+
 
 def get_value_compare_payload(settings: Settings, *, refresh: bool = False) -> dict[str, object]:
     return _get_compare_payload(
@@ -271,6 +302,17 @@ def get_three_asset_calmar_payload(settings: Settings, *, refresh: bool = False)
         instruments=THREE_ASSET_CALMAR_INSTRUMENTS,
         background=None,
         layered_components=THREE_ASSET_CALMAR_WEIGHT_COMPONENTS,
+        layered_cash_weight=0.0,
+        refresh=refresh,
+    )
+
+
+def get_cashflow_growth_compare_payload(settings: Settings, *, refresh: bool = False) -> dict[str, object]:
+    return _get_compare_payload(
+        settings,
+        instruments=CASHFLOW_GROWTH_COMPARE_INSTRUMENTS,
+        background=VALUE_COMPARE_BACKGROUND,
+        layered_components=(),
         layered_cash_weight=0.0,
         refresh=refresh,
     )

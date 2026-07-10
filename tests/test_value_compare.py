@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from myinvest_strategy_index.config import load_settings
 from myinvest_strategy_index.value_compare import (
+    CASHFLOW_GROWTH_COMPARE_INSTRUMENTS,
     CHINEXT_TOTAL_RETURN_INSTRUMENTS,
     DEFAULT_VALUE_COMPARE_INSTRUMENTS,
     FOUR_ASSET_CALMAR_INSTRUMENTS,
     THREE_ASSET_CALMAR_INSTRUMENTS,
     VALUE_COMPARE_BACKGROUND,
+    get_cashflow_growth_compare_payload,
     get_chinext_total_return_payload,
     get_four_asset_calmar_payload,
     get_three_asset_calmar_payload,
@@ -132,6 +134,45 @@ def test_chinext_total_return_payload_reads_three_cached_indices(tmp_path) -> No
     assert payload["series"]["399606.SZ"][1]["value"] == 1100.0
     assert payload["series"]["CN2673.CNI"][1]["value"] == 1200.0
     assert payload["series"]["CN2296.CNI"][1]["value"] == 1300.0
+
+
+def test_cashflow_growth_payload_keeps_two_indices_and_same_virtual_features(tmp_path) -> None:
+    settings = load_settings(root=tmp_path, env_file=tmp_path / ".env")
+    settings.cache_dir.mkdir(parents=True)
+    second_values = {
+        "480092.CNI": 1200,
+        "CN2296.CNI": 1100,
+        "000001.SH": 1050,
+    }
+    for instrument in [*CASHFLOW_GROWTH_COMPARE_INSTRUMENTS, VALUE_COMPARE_BACKGROUND]:
+        if instrument.kind.startswith("synthetic_"):
+            continue
+        safe_code = instrument.code.replace(".", "_")
+        second_value = second_values[instrument.code]
+        (settings.cache_dir / f"value_compare_{safe_code}.csv").write_text(
+            "date,close,value\n"
+            "2021-01-04,1000.000,1000.000\n"
+            f"2021-01-05,{second_value}.000,{second_value}.000\n",
+            encoding="utf-8",
+        )
+
+    payload = get_cashflow_growth_compare_payload(settings)
+
+    assert payload["ok"] is True
+    assert not payload["errors"]
+    assert len(payload["instruments"]) == 4
+    assert payload["background"]["code"] == "000001.SH"
+    assert set(payload["series"]) == {
+        "480092.CNI",
+        "CN2296.CNI",
+        "VIRTUAL_CASHFLOW_GROWTH_EQUAL_WEIGHT",
+        "VIRTUAL_CASHFLOW_GROWTH_RISK_PARITY",
+    }
+    assert payload["series"]["480092.CNI"][1]["value"] == 1200.0
+    assert payload["series"]["CN2296.CNI"][1]["value"] == 1100.0
+    assert payload["series"]["VIRTUAL_CASHFLOW_GROWTH_EQUAL_WEIGHT"][1]["value"] == 1.15
+    assert payload["series"]["VIRTUAL_CASHFLOW_GROWTH_RISK_PARITY"][1]["value"] == 1.15
+    assert payload["background_series"][1]["value"] == 1050.0
 
 
 def test_four_asset_calmar_payload_includes_equal_and_layered_models(tmp_path) -> None:

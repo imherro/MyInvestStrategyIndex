@@ -4,6 +4,7 @@ import json
 
 from myinvest_strategy_index.config import load_settings
 from myinvest_strategy_index.webapp import (
+    render_cashflow_growth_compare_page,
     render_chinext_compare_page,
     render_four_asset_compare_page,
     render_home_page,
@@ -25,6 +26,7 @@ def test_home_page_renders_strategy_card_entry() -> None:
     assert 'href="/chinext-compare"' in html
     assert 'href="/four-asset-compare"' in html
     assert 'href="/three-asset-compare"' in html
+    assert 'href="/cashflow-growth-compare"' in html
     assert 'href="/strategy-backtests"' in html
     assert "策略指数收益曲线对比" in html
     assert "value-compare" in html
@@ -34,12 +36,15 @@ def test_home_page_renders_strategy_card_entry() -> None:
     assert "four-asset" in html
     assert "三资产组合对比" in html
     assert "three-asset" in html
+    assert "自由现金流R与创成长R对比" in html
+    assert "cashflow-growth" in html
     assert "Cycle 策略回测集合" in html
     assert "strategy-backtests" in html
     assert "/api/strategy-index-compare/history.json" not in html
     assert "/api/chinext-compare/history.json" not in html
     assert "/api/four-asset-compare/history.json" not in html
     assert "/api/three-asset-compare/history.json" not in html
+    assert "/api/cashflow-growth-compare/history.json" not in html
 
 
 def test_value_compare_page_renders_strategy_index_shell() -> None:
@@ -105,6 +110,30 @@ def test_chinext_compare_page_renders_three_total_return_indices() -> None:
     assert "399606.SZ、CN2673.CNI、CN2296.CNI" in html
     assert "Calmar 优化结论" not in html
     assert "样本内有效、样本外不稳健" not in html
+    assert "最长回本时间" in html
+
+
+def test_cashflow_growth_compare_page_renders_two_index_shell() -> None:
+    html = render_cashflow_growth_compare_page()
+
+    assert "自由现金流R与创成长R对比" in html
+    assert "/api/cashflow-growth-compare/history.json" in html
+    assert 'data-extra-metrics="true"' in html
+    assert 'data-synthetic-code="VIRTUAL_CASHFLOW_GROWTH_EQUAL_WEIGHT"' in html
+    assert 'data-risk-parity-code="VIRTUAL_CASHFLOW_GROWTH_RISK_PARITY"' in html
+    assert 'data-anchor-synthetic="false"' in html
+    assert 'data-show-background="true"' in html
+    assert 'href="/"' in html
+    assert 'href="/value-compare"' in html
+    assert "480092.CNI 自由现金流R、CN2296.CNI 创成长R" in html
+    assert "双指数等权组合" in html
+    assert "滚动60日风险平价组合" in html
+    assert "上证指数作为灰色背景线" in html
+    assert "Calmar 优化结论" not in html
+    assert "国信价值全收益" not in html
+    assert "红利低波全收益" not in html
+    assert "华安黄金ETF" not in html
+    assert "十年国债ETF" not in html
     assert "最长回本时间" in html
 
 

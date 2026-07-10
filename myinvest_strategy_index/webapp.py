@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, urlparse
 from myinvest_strategy_index.config import Settings, load_settings
 from myinvest_strategy_index.cycle_backtests import get_cycle_backtest_detail, get_cycle_backtest_index
 from myinvest_strategy_index.value_compare import (
+    get_cashflow_growth_compare_payload,
     get_chinext_total_return_payload,
     get_four_asset_calmar_payload,
     get_three_asset_calmar_payload,
@@ -66,6 +67,9 @@ class StrategyIndexHandler(BaseHTTPRequestHandler):
         if parsed.path in {"/three-asset-compare", "/three-asset-calmar"}:
             self._send_html(render_three_asset_compare_page())
             return
+        if parsed.path in {"/cashflow-growth-compare", "/free-cashflow-growth-compare"}:
+            self._send_html(render_cashflow_growth_compare_page())
+            return
         if parsed.path == "/strategy-backtests":
             self._send_html(render_strategy_backtests_page(self.settings))
             return
@@ -84,6 +88,12 @@ class StrategyIndexHandler(BaseHTTPRequestHandler):
             return
         if parsed.path in {"/api/three-asset-compare/history.json", "/api/three-asset-calmar/history.json"}:
             self._send_history(parsed.query, get_three_asset_calmar_payload)
+            return
+        if parsed.path in {
+            "/api/cashflow-growth-compare/history.json",
+            "/api/free-cashflow-growth-compare/history.json",
+        }:
+            self._send_history(parsed.query, get_cashflow_growth_compare_payload)
             return
         if parsed.path == "/api/strategy-backtests/index.json":
             self._send_json(get_cycle_backtest_index(self.settings))
@@ -155,6 +165,7 @@ def run(host: str = "0.0.0.0", port: int = 8023) -> None:
                 "chinext_compare_url": f"http://{host}:{port}/chinext-compare",
                 "four_asset_compare_url": f"http://{host}:{port}/four-asset-compare",
                 "three_asset_compare_url": f"http://{host}:{port}/three-asset-compare",
+                "cashflow_growth_compare_url": f"http://{host}:{port}/cashflow-growth-compare",
                 "strategy_backtests_url": f"http://{host}:{port}/strategy-backtests",
                 "cache_dir": str(settings.cache_dir),
                 "tushare_token": bool(settings.tushare_token),
@@ -384,6 +395,19 @@ def render_home_page() -> str:
         </p>
         <div class="card-footer">
           <span>三类资产 / 等权 / 最优分层</span>
+          <span class="card-action">打开 →</span>
+        </div>
+      </a>
+      <a class="strategy-card" href="/cashflow-growth-compare" aria-label="打开自由现金流R与创成长R对比">
+        <div class="card-head">
+          <h3 class="card-title">自由现金流R与创成长R对比</h3>
+          <span class="card-tag">cashflow-growth</span>
+        </div>
+        <p class="card-desc">
+          参照 value-compare 的完整交互，只保留自由现金流R和创成长R两个全收益指数，并动态展示双指数等权和风险平价组合。
+        </p>
+        <div class="card-footer">
+          <span>双指数 / 等权 / 风险平价</span>
           <span class="card-action">打开 →</span>
         </div>
       </a>
@@ -1206,6 +1230,20 @@ def _chinext_intro_panel_html() -> str:
           <li><span class="conclusion-key">对比对象：</span>399006 创业板指、399673 创业板50、399296 创成长三个指数的全收益版本。</li>
           <li><span class="conclusion-key">实际数据源：</span>399606.SZ 创业板R、CN2673.CNI 创业板50R、CN2296.CNI 创成长R。</li>
           <li><span class="conclusion-key">展示方式：</span>默认三个指数全部勾选，指标和曲线按当前选择区间动态计算。</li>
+        </ul>
+      </div>
+    </section>"""
+
+
+def _cashflow_growth_intro_panel_html() -> str:
+    return """
+    <section class="conclusion-panel">
+      <h2 class="panel-title">自由现金流R与创成长R对比</h2>
+      <div class="content">
+        <ul class="conclusion-list">
+          <li><span class="conclusion-key">对比对象：</span>自由现金流R收益指数、创成长R收益指数。</li>
+          <li><span class="conclusion-key">实际数据源：</span>480092.CNI 自由现金流R、CN2296.CNI 创成长R。</li>
+          <li><span class="conclusion-key">展示方式：</span>沿用 value-compare 的曲线、回撤、散点、指标排序、共同区间、拖动缩放和更新数据功能；同时基于这两个指数动态计算等权组合和滚动60日风险平价组合。</li>
         </ul>
       </div>
     </section>"""
@@ -2742,6 +2780,42 @@ def render_chinext_compare_page() -> str:
         ),
         "2012起": "最早起",
         "复权价值曲线": "全收益指数曲线",
+        '<th data-sort="annualizedReturnDrawdownRatio" class="sorted-desc">年化收益/最大回撤</th>': (
+            '<th data-sort="annualizedReturnDrawdownRatio" class="sorted-desc">年化收益/最大回撤</th>\n'
+            '                <th data-sort="longestRecoveryDays">最长回本时间</th>\n'
+            '                <th data-sort="rollingThreeYearWorstReturn">滚动3年最差收益</th>'
+        ),
+    }
+    for old, new in replacements.items():
+        page = page.replace(old, new)
+    return page
+
+
+def render_cashflow_growth_compare_page() -> str:
+    page = render_etf_compare_page(top_panel_html=_cashflow_growth_intro_panel_html())
+    replacements = {
+        "ETF 复权对比 - MyInvestStrategyIndex": "自由现金流R与创成长R对比 - MyInvestStrategyIndex",
+        "ETF 复权价值曲线对比": "自由现金流R与创成长R对比",
+        "日线复权口径": "全收益指数口径",
+        "/api/etf-compare/history.json": "/api/cashflow-growth-compare/history.json",
+        "<body>": (
+            '<body data-api-path="/api/cashflow-growth-compare/history.json" data-extra-metrics="true" '
+            'data-synthetic-code="VIRTUAL_CASHFLOW_GROWTH_EQUAL_WEIGHT" '
+            'data-risk-parity-code="VIRTUAL_CASHFLOW_GROWTH_RISK_PARITY" data-anchor-synthetic="false" '
+            'data-show-background="true" data-longest-mode-label="最早起" '
+            'data-longest-base-text="当前指数自身起点=0%；上证指数作灰色背景参考">'
+        ),
+        (
+            "2012起模式按最早可用 ETF 开始展示；后上市 ETF 从上市日对应的虚拟等权ETF位置接上。"
+            "虚拟等权ETF按 512890、510500、510300、159915 四只真实 ETF 中当日已有数据的成分动态等权；"
+            "480092 为自由现金流R收益指数点位代理。"
+        ): (
+            "最早起模式按最早可用指数开始展示。双指数页只对比自由现金流R和创成长R，"
+            "并提供当前勾选成分的双指数等权组合和滚动60日风险平价组合。"
+            "上证指数作为灰色背景线，仅用于观察市场背景，不参与指标排序。"
+        ),
+        "2012起": "最早起",
+        "复权价值曲线": "双指数曲线",
         '<th data-sort="annualizedReturnDrawdownRatio" class="sorted-desc">年化收益/最大回撤</th>': (
             '<th data-sort="annualizedReturnDrawdownRatio" class="sorted-desc">年化收益/最大回撤</th>\n'
             '                <th data-sort="longestRecoveryDays">最长回本时间</th>\n'
