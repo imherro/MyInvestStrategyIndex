@@ -404,10 +404,10 @@ def render_home_page() -> str:
           <span class="card-tag">cashflow-growth</span>
         </div>
         <p class="card-desc">
-          参照 value-compare 的完整交互，只保留自由现金流R和创成长R两个全收益指数，并动态展示双指数等权和风险平价组合。
+          参照 value-compare 的完整交互，只保留自由现金流R和创成长R两个全收益指数，并动态展示双指数等权、风险平价和最大回撤风险评价组合。
         </p>
         <div class="card-footer">
-          <span>双指数 / 等权 / 风险平价</span>
+          <span>双指数 / 等权 / 风险评价</span>
           <span class="card-action">打开 →</span>
         </div>
       </a>
@@ -1243,7 +1243,7 @@ def _cashflow_growth_intro_panel_html() -> str:
         <ul class="conclusion-list">
           <li><span class="conclusion-key">对比对象：</span>自由现金流R收益指数、创成长R收益指数。</li>
           <li><span class="conclusion-key">实际数据源：</span>480092.CNI 自由现金流R、CN2296.CNI 创成长R。</li>
-          <li><span class="conclusion-key">展示方式：</span>沿用 value-compare 的曲线、回撤、散点、指标排序、共同区间、拖动缩放和更新数据功能；同时基于这两个指数动态计算等权组合和滚动60日风险平价组合。</li>
+          <li><span class="conclusion-key">展示方式：</span>沿用 value-compare 的曲线、回撤、散点、指标排序、共同区间、拖动缩放和更新数据功能；同时基于这两个指数动态计算等权组合、滚动60日风险平价组合和过去10年逆最大回撤风险评价组合。</li>
         </ul>
       </div>
     </section>"""
@@ -1784,6 +1784,7 @@ const BAR_BOX = { width: 1000, height: 120, plot: { left: 46, right: 18, top: 18
 const API_PATH = document.body.dataset.apiPath || "/api/etf-compare/history.json";
 const SYNTHETIC_CODE = document.body.dataset.syntheticCode || "VIRTUAL_EQUAL_WEIGHT";
 const RISK_PARITY_CODE = document.body.dataset.riskParityCode || "";
+const DRAWDOWN_RISK_CODE = document.body.dataset.drawdownRiskCode || "";
 const ANCHOR_TO_SYNTHETIC = document.body.dataset.anchorSynthetic !== "false";
 const LONGEST_MODE_LABEL = document.body.dataset.longestModeLabel || "2012起";
 const LONGEST_BASE_TEXT = document.body.dataset.longestBaseText || "后上市标的接到虚拟等权ETF位置";
@@ -1808,6 +1809,7 @@ const state = {
   drag: null,
   dynamicSyntheticRows: [],
   dynamicRiskParityRows: [],
+  dynamicDrawdownRiskRows: [],
   rangeMode: "common",
   valueAxisMode: "return",
   sortKey: "annualizedReturnDrawdownRatio",
@@ -2003,7 +2005,9 @@ function isSyntheticCode(code) {
 }
 
 function isDynamicSyntheticCode(code) {
-  return code === SYNTHETIC_CODE || (RISK_PARITY_CODE && code === RISK_PARITY_CODE);
+  return code === SYNTHETIC_CODE
+    || (RISK_PARITY_CODE && code === RISK_PARITY_CODE)
+    || (DRAWDOWN_RISK_CODE && code === DRAWDOWN_RISK_CODE);
 }
 
 function selectedComponentCodes() {
@@ -2139,6 +2143,9 @@ function rowsInRange(code, range) {
   }
   if (RISK_PARITY_CODE && code === RISK_PARITY_CODE) {
     return state.dynamicRiskParityRows.filter((row) => row.dateMs >= range.start && row.dateMs <= range.end);
+  }
+  if (DRAWDOWN_RISK_CODE && code === DRAWDOWN_RISK_CODE) {
+    return state.dynamicDrawdownRiskRows.filter((row) => row.dateMs >= range.start && row.dateMs <= range.end);
   }
   return (state.payload.series[code] || []).filter((row) => row.dateMs >= range.start && row.dateMs <= range.end);
 }
@@ -2299,6 +2306,84 @@ function buildRiskParityRows(range) {
   });
 }
 
+function buildDrawdownRiskRows(range, lookbackYears = 10) {
+  if (!DRAWDOWN_RISK_CODE) return [];
+  const componentItems = selectedComponentCodes()
+    .map((code) => ({
+      code,
+      activeRows: rowsInRange(code, range),
+      fullRows: state.payload.series[code] || [],
+    }))
+    .filter((item) => item.activeRows.length >= 2 && item.fullRows.length >= 2);
+  if (componentItems.length < 2) return [];
+
+  const lookbackStart = range.end - lookbackYears * 365.25 * MS_DAY;
+  const risks = componentItems.map((item) => {
+    const rows = item.fullRows.filter((row) => row.dateMs >= lookbackStart && row.dateMs <= range.end);
+    return maxDrawdownRisk(rows.length >= 2 ? rows : item.fullRows.filter((row) => row.dateMs <= range.end));
+  });
+  const weights = inverseDrawdownWeights(risks);
+  const weightsByCode = Object.fromEntries(componentItems.map((item, index) => [item.code, weights[index]]));
+  const allDates = new Set();
+  const returnMaps = componentItems.map((item) => {
+    const returns = new Map();
+    item.activeRows.forEach((row) => allDates.add(row.dateMs));
+    item.activeRows.forEach((row, index) => {
+      if (index === 0) return;
+      const prev = item.activeRows[index - 1].value;
+      if (prev > 0) returns.set(row.dateMs, row.value / prev - 1);
+    });
+    return returns;
+  });
+  const dates = Array.from(allDates).sort((left, right) => left - right);
+  let value = 1;
+  return dates.map((dateMs, index) => {
+    if (index > 0) {
+      const available = returnMaps
+        .map((returns, assetIndex) => ({
+          dailyReturn: returns.get(dateMs),
+          weight: weights[assetIndex],
+        }))
+        .filter((item) => Number.isFinite(item.dailyReturn) && Number.isFinite(item.weight) && item.weight > 0);
+      const totalWeight = available.reduce((sum, item) => sum + item.weight, 0);
+      if (available.length && totalWeight > 0) {
+        const portfolioReturn = available.reduce(
+          (sum, item) => sum + item.dailyReturn * item.weight / totalWeight,
+          0
+        );
+        value *= 1 + portfolioReturn;
+      }
+    }
+    return { dateMs, close: value, value, weights: weightsByCode, risks: Object.fromEntries(componentItems.map((item, index) => [item.code, risks[index]])) };
+  });
+}
+
+function maxDrawdownRisk(rows) {
+  if (!rows.length) return NaN;
+  let peak = -Infinity;
+  let maxDrawdown = 0;
+  rows.forEach((row) => {
+    const value = row.value;
+    if (!Number.isFinite(value) || value <= 0) return;
+    peak = Math.max(peak, value);
+    if (Number.isFinite(peak) && peak > 0) maxDrawdown = Math.min(maxDrawdown, value / peak - 1);
+  });
+  return Math.abs(maxDrawdown);
+}
+
+function inverseDrawdownWeights(risks) {
+  if (!risks.length) return [];
+  const positive = risks.filter((risk) => Number.isFinite(risk) && risk > 1e-9);
+  const floor = positive.length ? Math.min(...positive) * 0.5 : 1e-9;
+  const inverse = risks.map((risk) => {
+    const usable = Number.isFinite(risk) && risk > 1e-9 ? risk : floor;
+    return 1 / usable;
+  });
+  const total = inverse.reduce((sum, item) => sum + item, 0);
+  if (!Number.isFinite(total) || total <= 0) return risks.map(() => 1 / risks.length);
+  return inverse.map((item) => item / total);
+}
+
 function trailingVolatility(values, window = 60) {
   const recent = values.slice(-window).filter(Number.isFinite);
   if (recent.length < 20) return NaN;
@@ -2378,6 +2463,7 @@ function renderAll() {
   dom.end.value = fmtDate(range.end);
   state.dynamicSyntheticRows = buildDynamicSyntheticRows(range);
   state.dynamicRiskParityRows = buildRiskParityRows(range);
+  state.dynamicDrawdownRiskRows = buildDrawdownRiskRows(range);
   const series = codes.map((code) => normalizedSeries(code, range)).filter(Boolean);
   const background = backgroundNormalizedSeries(range);
   const modeText = state.rangeMode === "longest" ? LONGEST_MODE_LABEL : "共同区间";
@@ -2395,26 +2481,43 @@ function renderAll() {
 function renderRiskParityWeights(range) {
   if (!dom.riskParityWeights) return;
   dom.riskParityWeights.innerHTML = "";
-  if (!RISK_PARITY_CODE) {
-    dom.riskParityWeights.hidden = true;
-    return;
-  }
-  dom.riskParityWeights.hidden = false;
+  const rendered = [
+    appendWeightPanel({
+      rows: state.dynamicRiskParityRows,
+      titlePrefix: "风险平价最新比例",
+      detail: "滚动60日波动率倒数",
+      emptyText: "风险平价比例：请至少勾选两个真实标的，并保证样本足够。",
+      range,
+    }),
+    appendWeightPanel({
+      rows: state.dynamicDrawdownRiskRows,
+      titlePrefix: "最大回撤风险评价比例",
+      detail: "过去10年最大回撤绝对值倒数",
+      emptyText: "最大回撤风险评价：请至少勾选两个真实标的，并保证样本足够。",
+      range,
+      includeRisks: true,
+    }),
+  ].some(Boolean);
+  dom.riskParityWeights.hidden = !rendered;
+}
+
+function appendWeightPanel({ rows, titlePrefix, detail, emptyText, range, includeRisks = false }) {
+  if (!Array.isArray(rows) || !rows.length) return false;
   const componentCodes = selectedComponentCodes();
   if (componentCodes.length < 2) {
-    appendRiskParityMessage("风险平价比例：请至少勾选两个真实标的。");
-    return;
+    appendRiskParityMessage(emptyText);
+    return true;
   }
-  const latest = [...state.dynamicRiskParityRows]
+  const latest = [...rows]
     .reverse()
     .find((row) => row.dateMs >= range.start && row.dateMs <= range.end && row.weights && Object.keys(row.weights).length);
   if (!latest) {
-    appendRiskParityMessage("风险平价比例：样本不足，暂未形成可显示权重。");
-    return;
+    appendRiskParityMessage(emptyText);
+    return true;
   }
   const title = document.createElement("div");
   title.className = "weight-title";
-  title.textContent = `风险平价最新比例（滚动60日波动率倒数，截至 ${fmtDate(latest.dateMs)}）`;
+  title.textContent = `${titlePrefix}（${detail}，截至 ${fmtDate(latest.dateMs)}）`;
   dom.riskParityWeights.appendChild(title);
   componentCodes
     .filter((code) => Number.isFinite(latest.weights[code]))
@@ -2441,6 +2544,16 @@ function renderRiskParityWeights(range) {
       row.append(name, bar, value);
       dom.riskParityWeights.appendChild(row);
     });
+  if (includeRisks && latest.risks) {
+    const riskLine = document.createElement("div");
+    riskLine.className = "weight-title";
+    riskLine.textContent = `最大回撤：${componentCodes
+      .filter((code) => Number.isFinite(latest.risks[code]))
+      .map((code) => `${instrumentByCode(code).name} ${pct(-latest.risks[code])}`)
+      .join("；")}`;
+    dom.riskParityWeights.appendChild(riskLine);
+  }
+  return true;
 }
 
 function appendRiskParityMessage(text) {
@@ -2918,7 +3031,8 @@ def render_cashflow_growth_compare_page() -> str:
         "<body>": (
             '<body data-api-path="/api/cashflow-growth-compare/history.json" data-extra-metrics="true" '
             'data-synthetic-code="VIRTUAL_CASHFLOW_GROWTH_EQUAL_WEIGHT" '
-            'data-risk-parity-code="VIRTUAL_CASHFLOW_GROWTH_RISK_PARITY" data-anchor-synthetic="false" '
+            'data-risk-parity-code="VIRTUAL_CASHFLOW_GROWTH_RISK_PARITY" '
+            'data-drawdown-risk-code="VIRTUAL_CASHFLOW_GROWTH_DRAWDOWN_RISK" data-anchor-synthetic="false" '
             'data-show-background="true" data-longest-mode-label="最早起" '
             'data-longest-base-text="当前指数自身起点=0%；上证指数作灰色背景参考">'
         ),
@@ -2928,7 +3042,8 @@ def render_cashflow_growth_compare_page() -> str:
             "480092 为自由现金流R收益指数点位代理。"
         ): (
             "最早起模式按最早可用指数开始展示。双指数页只对比自由现金流R和创成长R，"
-            "并提供当前勾选成分的双指数等权组合和滚动60日风险平价组合。"
+            "并提供当前勾选成分的双指数等权组合、滚动60日风险平价组合和"
+            "过去10年逆最大回撤风险评价组合。"
             "上证指数作为灰色背景线，仅用于观察市场背景，不参与指标排序。"
         ),
         "2012起": "最早起",

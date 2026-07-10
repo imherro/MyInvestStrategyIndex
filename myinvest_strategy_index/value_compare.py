@@ -41,6 +41,7 @@ THREE_ASSET_CALMAR_WEIGHT_COMPONENTS: tuple[tuple[str, float], ...] = (
     ("480092.CNI", 0.383189924861),
     ("518880.SH", 0.4),
 )
+DRAWDOWN_RISK_LOOKBACK_YEARS = 10
 
 
 DEFAULT_VALUE_COMPARE_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = (
@@ -260,6 +261,13 @@ CASHFLOW_GROWTH_COMPARE_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = (
         source="自由现金流R/创成长R 滚动60日波动率倒数加权",
         color="#2563EB",
     ),
+    ValueCompareInstrument(
+        code="VIRTUAL_CASHFLOW_GROWTH_DRAWDOWN_RISK",
+        name="最大回撤风险评价组合",
+        kind="synthetic_drawdown_risk",
+        source="自由现金流R/创成长R 最近10年最大回撤绝对值倒数加权",
+        color="#7C2D12",
+    ),
 )
 
 
@@ -355,6 +363,8 @@ def _get_compare_payload(
         try:
             if instrument.kind == "synthetic_risk_parity":
                 history = _build_risk_parity_history(component_histories)
+            elif instrument.kind == "synthetic_drawdown_risk":
+                history = _build_drawdown_risk_history(component_histories)
             elif instrument.kind == "synthetic_layered_weight":
                 history = _build_layered_weight_history(
                     histories,
@@ -489,6 +499,69 @@ def _build_risk_parity_history(histories: list[pd.DataFrame], *, window: int = 6
     return _normalize_history(pd.DataFrame(rows))
 
 
+def _build_drawdown_risk_history(
+    histories: list[pd.DataFrame],
+    *,
+    lookback_years: int = DRAWDOWN_RISK_LOOKBACK_YEARS,
+) -> pd.DataFrame:
+    if len(histories) < 2:
+        raise RuntimeError("At least two index histories are required for drawdown-risk series")
+
+    values: list[pd.Series] = []
+    starts: list[pd.Timestamp] = []
+    ends: list[pd.Timestamp] = []
+    for history in histories:
+        frame = history.sort_values("date").drop_duplicates("date", keep="last").copy()
+        if frame.empty:
+            continue
+        series = frame.set_index("date")["value"].astype(float).sort_index()
+        values.append(series)
+        starts.append(pd.Timestamp(series.index.min()))
+        ends.append(pd.Timestamp(series.index.max()))
+    if len(values) < 2:
+        raise RuntimeError("Index histories have no usable rows")
+
+    end = min(ends)
+    lookback_start = end - pd.DateOffset(years=lookback_years)
+    risks = []
+    for series in values:
+        window = series[(series.index >= lookback_start) & (series.index <= end)]
+        if len(window) < 2:
+            window = series[series.index <= end]
+        risks.append(_max_drawdown_risk(window))
+    weights = _inverse_drawdown_weights(risks)
+
+    start = max(starts)
+    dates = sorted(
+        {
+            pd.Timestamp(date)
+            for series in values
+            for date in series.index
+            if start <= pd.Timestamp(date) <= end
+        }
+    )
+    if len(dates) < 2:
+        raise RuntimeError("Drawdown-risk components have no overlapping history")
+
+    returns = [series.pct_change() for series in values]
+    value = 1.0
+    rows: list[dict[str, object]] = []
+    for index, date in enumerate(dates):
+        if index > 0:
+            available = [
+                (float(series.loc[date]), weights[asset_index])
+                for asset_index, series in enumerate(returns)
+                if date in series.index and pd.notna(series.loc[date]) and math.isfinite(float(series.loc[date]))
+            ]
+            total_weight = sum(weight for _, weight in available)
+            if available and total_weight > 0:
+                portfolio_return = sum(daily_return * weight for daily_return, weight in available) / total_weight
+                value *= 1.0 + portfolio_return
+        rows.append({"date": date, "close": value, "value": value})
+
+    return _normalize_history(pd.DataFrame(rows))
+
+
 def _build_layered_weight_history(
     histories: dict[str, pd.DataFrame],
     *,
@@ -561,6 +634,36 @@ def _inverse_volatility_weights(volatilities: list[float]) -> list[float]:
     total = sum(inverse)
     if total <= 0:
         return [1.0 / len(volatilities)] * len(volatilities)
+    return [item / total for item in inverse]
+
+
+def _max_drawdown_risk(series: pd.Series) -> float:
+    if series.empty:
+        return math.nan
+    peak = -math.inf
+    max_drawdown = 0.0
+    for raw_value in series.dropna():
+        value = float(raw_value)
+        if not math.isfinite(value) or value <= 0:
+            continue
+        peak = max(peak, value)
+        if math.isfinite(peak) and peak > 0:
+            max_drawdown = min(max_drawdown, value / peak - 1.0)
+    return abs(max_drawdown)
+
+
+def _inverse_drawdown_weights(risks: list[float]) -> list[float]:
+    if not risks:
+        return []
+    positive = [risk for risk in risks if math.isfinite(risk) and risk > 1e-9]
+    floor = min(positive) * 0.5 if positive else 1e-9
+    inverse = []
+    for risk in risks:
+        usable = risk if math.isfinite(risk) and risk > 1e-9 else floor
+        inverse.append(1.0 / usable)
+    total = sum(inverse)
+    if not math.isfinite(total) or total <= 0:
+        return [1.0 / len(risks)] * len(risks)
     return [item / total for item in inverse]
 
 

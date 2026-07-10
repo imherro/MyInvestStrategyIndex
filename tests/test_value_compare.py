@@ -160,19 +160,50 @@ def test_cashflow_growth_payload_keeps_two_indices_and_same_virtual_features(tmp
 
     assert payload["ok"] is True
     assert not payload["errors"]
-    assert len(payload["instruments"]) == 4
+    assert len(payload["instruments"]) == 5
     assert payload["background"]["code"] == "000001.SH"
     assert set(payload["series"]) == {
         "480092.CNI",
         "CN2296.CNI",
         "VIRTUAL_CASHFLOW_GROWTH_EQUAL_WEIGHT",
         "VIRTUAL_CASHFLOW_GROWTH_RISK_PARITY",
+        "VIRTUAL_CASHFLOW_GROWTH_DRAWDOWN_RISK",
     }
     assert payload["series"]["480092.CNI"][1]["value"] == 1200.0
     assert payload["series"]["CN2296.CNI"][1]["value"] == 1100.0
     assert payload["series"]["VIRTUAL_CASHFLOW_GROWTH_EQUAL_WEIGHT"][1]["value"] == 1.15
     assert payload["series"]["VIRTUAL_CASHFLOW_GROWTH_RISK_PARITY"][1]["value"] == 1.15
+    assert payload["series"]["VIRTUAL_CASHFLOW_GROWTH_DRAWDOWN_RISK"][1]["value"] == 1.15
     assert payload["background_series"][1]["value"] == 1050.0
+
+
+def test_cashflow_growth_drawdown_risk_uses_inverse_max_drawdown_weights(tmp_path) -> None:
+    settings = load_settings(root=tmp_path, env_file=tmp_path / ".env")
+    settings.cache_dir.mkdir(parents=True)
+    values = {
+        "480092.CNI": [1000, 650, 1000],
+        "CN2296.CNI": [1000, 450, 1000],
+        "000001.SH": [1000, 900, 1000],
+    }
+    for instrument in [*CASHFLOW_GROWTH_COMPARE_INSTRUMENTS, VALUE_COMPARE_BACKGROUND]:
+        if instrument.kind.startswith("synthetic_"):
+            continue
+        safe_code = instrument.code.replace(".", "_")
+        first, second, third = values[instrument.code]
+        (settings.cache_dir / f"value_compare_{safe_code}.csv").write_text(
+            "date,close,value\n"
+            f"2021-01-04,{first}.000,{first}.000\n"
+            f"2021-01-05,{second}.000,{second}.000\n"
+            f"2021-01-06,{third}.000,{third}.000\n",
+            encoding="utf-8",
+        )
+
+    payload = get_cashflow_growth_compare_payload(settings)
+
+    assert payload["ok"] is True
+    drawdown_rows = payload["series"]["VIRTUAL_CASHFLOW_GROWTH_DRAWDOWN_RISK"]
+    assert drawdown_rows[1]["value"] == 0.572222
+    assert drawdown_rows[2]["value"] == 1.0325
 
 
 def test_four_asset_calmar_payload_includes_equal_and_layered_models(tmp_path) -> None:
