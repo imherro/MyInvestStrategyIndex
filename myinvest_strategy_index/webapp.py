@@ -18,6 +18,9 @@ from myinvest_strategy_index.value_compare import (
     get_chinext_total_return_payload,
     get_four_asset_calmar_payload,
     get_three_asset_calmar_payload,
+    get_us_etf_compare_payload,
+    get_inflation_portfolio_payload,
+    get_us_etf_observer_payload,
     get_value_compare_payload,
 )
 
@@ -70,6 +73,15 @@ class StrategyIndexHandler(BaseHTTPRequestHandler):
         if parsed.path in {"/cashflow-growth-compare", "/free-cashflow-growth-compare"}:
             self._send_html(render_cashflow_growth_compare_page())
             return
+        if parsed.path == "/us-etf-compare":
+            self._send_html(render_us_etf_compare_page())
+            return
+        if parsed.path == "/us-inflation-portfolio":
+            self._send_html(render_inflation_portfolio_page())
+            return
+        if parsed.path == "/us-etf-strategy-observer":
+            self._send_html(render_us_etf_strategy_observer_page())
+            return
         if parsed.path == "/strategy-backtests":
             self._send_html(render_strategy_backtests_page(self.settings))
             return
@@ -94,6 +106,15 @@ class StrategyIndexHandler(BaseHTTPRequestHandler):
             "/api/free-cashflow-growth-compare/history.json",
         }:
             self._send_history(parsed.query, get_cashflow_growth_compare_payload)
+            return
+        if parsed.path == "/api/us-etf-compare/history.json":
+            self._send_history(parsed.query, get_us_etf_compare_payload)
+            return
+        if parsed.path == "/api/us-inflation-portfolio/history.json":
+            self._send_history(parsed.query, get_inflation_portfolio_payload)
+            return
+        if parsed.path == "/api/us-etf-strategy-observer/history.json":
+            self._send_history(parsed.query, get_us_etf_observer_payload)
             return
         if parsed.path == "/api/strategy-backtests/index.json":
             self._send_json(get_cycle_backtest_index(self.settings))
@@ -410,6 +431,24 @@ def render_home_page() -> str:
           <span>双指数 / 等权 / 风险评价</span>
           <span class="card-action">打开 →</span>
         </div>
+      </a>
+      <a class="strategy-card" href="/us-etf-compare" aria-label="打开美股ETF组合对比">
+        <div class="card-head">
+          <h3 class="card-title">美股 ETF 组合对比</h3>
+          <span class="card-tag">us-etf</span>
+        </div>
+        <p class="card-desc">对比 RSP、IWY、MOAT、SPMO、PFF、VNQ，并加入每只目标权重 16.67% 的六 ETF 等权组合。</p>
+        <div class="card-footer"><span>增长 / 收益 / 房地产 / 六只等权</span><span class="card-action">打开 →</span></div>
+      </a>
+      <a class="strategy-card" href="/us-inflation-portfolio" aria-label="打开美股抗通胀组合策略">
+        <div class="card-head"><h3 class="card-title">美股抗通胀组合策略</h3><span class="card-tag">inflation</span></div>
+        <p class="card-desc">SPMO、MOAT、IEF、IAU、KMLM、PDBC 固定目标权重，季度检查并按阈值触发再平衡。</p>
+        <div class="card-footer"><span>股票 / 国债 / 黄金 / 趋势 / 商品</span><span class="card-action">打开 →</span></div>
+      </a>
+      <a class="strategy-card" href="/us-etf-strategy-observer" aria-label="打开美股ETF策略观察池">
+        <div class="card-head"><h3 class="card-title">美股 ETF 策略观察池</h3><span class="card-tag">observer</span></div>
+        <p class="card-desc">按核心 Beta、风格增强、防御避险和策略类观察23只ETF，并用当前选择动态等权组合对比。</p>
+        <div class="card-footer"><span>Calmar / 年化收益 / 回撤 / 波动</span><span class="card-action">打开 →</span></div>
       </a>
     </div>
     <h2 class="section-title">策略回测</h2>
@@ -1264,6 +1303,51 @@ def _four_asset_calmar_panel_html() -> str:
     </section>"""
 
 
+def _us_etf_intro_panel_html() -> str:
+    return """
+    <section class="conclusion-panel">
+      <h2 class="panel-title">美股 ETF 六资产观察组合</h2>
+      <div class="content"><ul class="conclusion-list">
+        <li><span class="conclusion-key">股票增长：</span>RSP、IWY、MOAT、SPMO。</li>
+        <li><span class="conclusion-key">收益与房地产：</span>PFF 优先股与收益证券、VNQ 美国房地产。</li>
+        <li><span class="conclusion-key">第一版配置：</span>六只 ETF 全部等权，每只目标权重 16.67%；使用含分红和拆股调整的复权价格观察长期表现。</li>
+      </ul></div>
+    </section>"""
+
+
+def _inflation_portfolio_panel_html() -> str:
+    return """
+    <section class="conclusion-panel">
+      <h2 class="panel-title">美股抗通胀固定权重策略</h2>
+      <div class="content"><ul class="conclusion-list">
+        <li><span class="conclusion-key">目标权重：</span>SPMO 30%、MOAT 20%、IEF 20%、IAU 15%、KMLM 10%、PDBC 5%。</li>
+        <li><span class="conclusion-key">执行规则：</span>月度总回报；季度末检查；偏离 3 个百分点或相对偏离 25% 时恢复目标；单边交易成本 10bp；只做多且无未来数据。</li>
+        <li><span class="conclusion-key">对照组合：</span>增加六资产等权曲线，每只 16.67%，采用相同的季度检查、阈值与成本口径。</li>
+        <li><span class="conclusion-key">风险估计：</span>相关系数与风险贡献使用截至期末最近 36 个月月度数据。</li>
+      </ul></div>
+    </section>
+    <section id="portfolio-analysis-section" class="conclusion-panel" hidden>
+      <h2 class="panel-title">策略审计指标</h2>
+      <p id="portfolio-analysis-period" class="note"></p>
+      <div class="table-wrap"><table><tbody id="portfolio-metrics-body"></tbody></table></div>
+      <h3>各资产风险贡献</h3><div class="table-wrap"><table><tbody id="portfolio-risk-body"></tbody></table></div>
+      <h3>最近36个月相关系数矩阵</h3><div class="table-wrap"><table><tbody id="portfolio-correlation-body"></tbody></table></div>
+      <h3>年度换手率</h3><div class="table-wrap"><table><tbody id="portfolio-turnover-body"></tbody></table></div>
+    </section>"""
+
+
+def _us_etf_observer_panel_html() -> str:
+    return """
+    <section class="conclusion-panel">
+      <h2 class="panel-title">美股 ETF 策略观察池</h2>
+      <div class="content"><ul class="conclusion-list">
+        <li><span class="conclusion-key">核心指标：</span>默认按 Calmar 排序，同时重点比较年化收益、最大回撤和年化波动率。</li>
+        <li><span class="conclusion-key">四类资产：</span>核心 Beta、风险/风格增强器、防御或避险组件、策略类；同类 ETF 可能高度重合，不代表独立风险来源。</li>
+        <li><span class="conclusion-key">动态等权：</span>等权曲线使用日线复权收益；取消或增加真实 ETF 后，立即按当前选择重新等权计算。</li>
+      </ul></div>
+    </section>"""
+
+
 def _three_asset_calmar_panel_html() -> str:
     return """
     <section class="conclusion-panel">
@@ -1425,6 +1509,20 @@ def render_etf_compare_page(top_panel_html: str = "") -> str:
       font-size: 13px;
       line-height: 1.35;
     }
+    .instrument-category {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 6px;
+      padding: 7px 0 3px;
+      border-bottom: 1px solid var(--line);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 750;
+    }
+    .instrument-category button { min-height: 26px; padding: 3px 8px; font-size: 11px; }
     .swatch {
       width: 12px;
       height: 12px;
@@ -1869,6 +1967,12 @@ const dom = {
   rebalanceSection: document.getElementById("rebalance-analysis-section"),
   rebalanceSummary: document.getElementById("rebalance-summary"),
   rebalanceBody: document.getElementById("rebalance-body"),
+  portfolioAnalysisSection: document.getElementById("portfolio-analysis-section"),
+  portfolioAnalysisPeriod: document.getElementById("portfolio-analysis-period"),
+  portfolioMetricsBody: document.getElementById("portfolio-metrics-body"),
+  portfolioRiskBody: document.getElementById("portfolio-risk-body"),
+  portfolioCorrelationBody: document.getElementById("portfolio-correlation-body"),
+  portfolioTurnoverBody: document.getElementById("portfolio-turnover-body"),
   refresh: document.getElementById("refresh-data"),
   reset: document.getElementById("reset-range"),
   panLeft: document.getElementById("pan-left"),
@@ -2009,10 +2113,27 @@ async function loadHistory(refresh = false) {
 
 function renderInstrumentControls() {
   dom.instruments.innerHTML = "";
+  let currentCategory = null;
   state.payload.instruments.forEach((item) => {
+    if (item.category && item.category !== currentCategory) {
+      currentCategory = item.category;
+      const categoryName = currentCategory;
+      const header = document.createElement("div");
+      header.className = "instrument-category";
+      const title = document.createElement("span");
+      title.textContent = categoryName;
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "secondary";
+      toggle.textContent = "全选/清空";
+      toggle.addEventListener("click", () => toggleInstrumentCategory(categoryName));
+      header.append(title, toggle);
+      dom.instruments.appendChild(header);
+    }
     const hasData = Boolean(state.payload.series[item.code]?.length);
     const label = document.createElement("label");
     label.className = "instrument";
+    label.dataset.category = item.category || "";
     const input = document.createElement("input");
     input.type = "checkbox";
     input.value = item.code;
@@ -2032,6 +2153,19 @@ function renderInstrumentControls() {
     label.append(input, swatch, text);
     dom.instruments.appendChild(label);
   });
+}
+
+function toggleInstrumentCategory(category) {
+  const items = state.payload.instruments.filter((item) => item.category === category && !isSyntheticCode(item.code));
+  const available = items.filter((item) => state.payload.series[item.code]?.length);
+  const shouldSelect = available.some((item) => !state.selected.has(item.code));
+  available.forEach((item) => {
+    if (shouldSelect) state.selected.add(item.code);
+    else state.selected.delete(item.code);
+  });
+  renderInstrumentControls();
+  clampInputsToCurrentMode();
+  renderAll();
 }
 
 function selectedCodes() {
@@ -2515,7 +2649,40 @@ function renderAll() {
   renderMetricsTable(series);
   renderRiskParityWeights(range);
   renderRebalanceAnalysis();
+  renderPortfolioAnalysis();
   renderErrors();
+}
+
+function renderPortfolioAnalysis() {
+  if (!dom.portfolioAnalysisSection) return;
+  const analysis = state.payload?.portfolio_analysis;
+  if (!analysis?.metrics) {
+    dom.portfolioAnalysisSection.hidden = true;
+    return;
+  }
+  dom.portfolioAnalysisSection.hidden = false;
+  dom.portfolioAnalysisPeriod.textContent = `${analysis.start_date} 至 ${analysis.end_date}；指标已扣除阈值再平衡交易成本。`;
+  const m = analysis.metrics;
+  const metrics = [
+    ["CAGR", pct(m.cagr)], ["累计总收益", pct(m.total_return)],
+    ["年化波动率", pct(m.annualized_volatility)], ["最大回撤", pct(m.max_drawdown)],
+    ["最大回撤恢复时间", `${m.max_drawdown_recovery_days ?? "-"}天${m.max_drawdown_recovered ? "" : "（尚未恢复）"}`],
+    ["Sharpe", ratioText(m.sharpe)], ["Sortino", ratioText(m.sortino)], ["Calmar", ratioText(m.calmar)],
+    ["最差月份", `${m.worst_month_date || "-"} / ${pct(m.worst_month)}`],
+    ["最差年度", `${m.worst_year_label || "-"} / ${pct(m.worst_year)}`],
+    ["滚动12个月最差收益", pct(m.rolling_12m_worst)],
+    ["滚动36个月最新年化收益", pct(m.rolling_36m_latest_annualized)],
+    ["滚动36个月最差年化收益", pct(m.rolling_36m_worst_annualized)],
+    ["平均年度换手率", pct(m.annual_turnover_average)],
+  ];
+  dom.portfolioMetricsBody.innerHTML = metrics.map(([name, value]) => `<tr><th>${name}</th><td class="num">${value}</td></tr>`).join("");
+  dom.portfolioRiskBody.innerHTML = Object.entries(analysis.risk_contributions || {})
+    .map(([code, value]) => `<tr><th>${code}</th><td class="num">${pct(value)}</td></tr>`).join("");
+  const codes = Object.keys(analysis.correlation_matrix || {});
+  dom.portfolioCorrelationBody.innerHTML = `<tr><th>ETF</th>${codes.map((code) => `<th>${code}</th>`).join("")}</tr>`
+    + codes.map((code) => `<tr><th>${code}</th>${codes.map((other) => `<td class="num">${ratioText(analysis.correlation_matrix[code]?.[other])}</td>`).join("")}</tr>`).join("");
+  dom.portfolioTurnoverBody.innerHTML = Object.entries(analysis.annual_turnover || {})
+    .map(([year, value]) => `<tr><th>${year}</th><td class="num">${pct(value)}</td></tr>`).join("");
 }
 
 function renderRebalanceAnalysis() {
@@ -3177,6 +3344,77 @@ def render_four_asset_compare_page() -> str:
             '                <th data-sort="longestRecoveryDays">最长回本时间</th>\n'
             '                <th data-sort="rollingThreeYearWorstReturn">滚动3年最差收益</th>'
         ),
+    }
+    for old, new in replacements.items():
+        page = page.replace(old, new)
+    return page
+
+
+def render_us_etf_compare_page() -> str:
+    page = render_etf_compare_page(top_panel_html=_us_etf_intro_panel_html())
+    replacements = {
+        "ETF 复权对比 - MyInvestStrategyIndex": "美股 ETF 组合对比 - MyInvestStrategyIndex",
+        "ETF 复权价值曲线对比": "美股 ETF 组合对比",
+        "日线复权口径": "Yahoo Finance 复权口径",
+        "/api/etf-compare/history.json": "/api/us-etf-compare/history.json",
+        "<body>": ('<body data-api-path="/api/us-etf-compare/history.json" data-extra-metrics="true" '
+            'data-synthetic-code="VIRTUAL_US_ETF_EQUAL_WEIGHT" data-anchor-synthetic="false" '
+            'data-show-background="false" data-longest-mode-label="最早起" data-longest-base-text="当前ETF自身起点=0%">'),
+        ("2012起模式按最早可用 ETF 开始展示；后上市 ETF 从上市日对应的虚拟等权ETF位置接上。"
+         "虚拟等权ETF按 512890、510500、510300、159915 四只真实 ETF 中当日已有数据的成分动态等权；"
+         "480092 为自由现金流R收益指数点位代理。"): (
+            "最早起模式按六只美股 ETF 的最早可用复权数据开始展示。页面对比 RSP、IWY、MOAT、SPMO、"
+            "PFF 和 VNQ，并加入六 ETF 等权组合；每只目标权重 16.67%。"),
+        "2012起": "最早起",
+        "复权价值曲线": "美股 ETF 组合曲线",
+        '<th data-sort="annualizedReturnDrawdownRatio" class="sorted-desc">年化收益/最大回撤</th>': (
+            '<th data-sort="annualizedReturnDrawdownRatio" class="sorted-desc">年化收益/最大回撤</th>\n'
+            '                <th data-sort="longestRecoveryDays">最长回本时间</th>\n'
+            '                <th data-sort="rollingThreeYearWorstReturn">滚动3年最差收益</th>'),
+    }
+    for old, new in replacements.items():
+        page = page.replace(old, new)
+    return page
+
+
+def render_inflation_portfolio_page() -> str:
+    page = render_etf_compare_page(top_panel_html=_inflation_portfolio_panel_html())
+    replacements = {
+        "ETF 复权对比 - MyInvestStrategyIndex": "美股抗通胀组合策略 - MyInvestStrategyIndex",
+        "ETF 复权价值曲线对比": "美股抗通胀组合策略",
+        "日线复权口径": "月度总回报 / 阈值再平衡",
+        "/api/etf-compare/history.json": "/api/us-inflation-portfolio/history.json",
+        "<body>": ('<body data-api-path="/api/us-inflation-portfolio/history.json" data-extra-metrics="true" '
+            'data-synthetic-code="VIRTUAL_INFLATION_EQUAL_WEIGHT" data-anchor-synthetic="false" '
+            'data-show-background="false" data-longest-mode-label="最早共同数据" '
+            'data-longest-base-text="所有资产使用月末复权总回报">'),
+        "2012起": "最早共同数据",
+        "复权价值曲线": "抗通胀组合曲线",
+    }
+    for old, new in replacements.items():
+        page = page.replace(old, new)
+    return page
+
+
+def render_us_etf_strategy_observer_page() -> str:
+    page = render_etf_compare_page(top_panel_html=_us_etf_observer_panel_html())
+    replacements = {
+        "ETF 复权对比 - MyInvestStrategyIndex": "美股 ETF 策略观察池 - MyInvestStrategyIndex",
+        "ETF 复权价值曲线对比": "美股 ETF 策略观察池",
+        "日线复权口径": "Yahoo Finance 日线总回报",
+        "/api/etf-compare/history.json": "/api/us-etf-strategy-observer/history.json",
+        "<body>": ('<body data-api-path="/api/us-etf-strategy-observer/history.json" data-extra-metrics="true" '
+            'data-synthetic-code="VIRTUAL_US_ETF_OBSERVER_EQUAL_WEIGHT" data-anchor-synthetic="false" '
+            'data-show-background="false" data-longest-mode-label="最早起" '
+            'data-longest-base-text="当前ETF自身起点=0%">'),
+        "2012起": "最早起",
+        "复权价值曲线": "ETF与动态等权资金曲线",
+        "年化收益/最大回撤": "Calmar",
+        ("最早起模式按最早可用 ETF 开始展示；后上市 ETF 从上市日对应的虚拟等权ETF位置接上。"
+         "虚拟等权ETF按 512890、510500、510300、159915 四只真实 ETF 中当日已有数据的成分动态等权；"
+         "480092 为自由现金流R收益指数点位代理。"): (
+            "最早起模式展示各 ETF 自身完整历史；共同区间模式从当前勾选标的共同起点比较。"
+            "动态等权组合只使用当前勾选的真实 ETF，并在勾选变化后立即按日重新计算。"),
     }
     for old, new in replacements.items():
         page = page.replace(old, new)

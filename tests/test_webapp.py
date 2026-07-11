@@ -12,6 +12,9 @@ from myinvest_strategy_index.webapp import (
     render_strategy_backtests_page,
     render_strategy_index_compare_page,
     render_three_asset_compare_page,
+    render_us_etf_compare_page,
+    render_inflation_portfolio_page,
+    render_us_etf_strategy_observer_page,
     render_value_compare_page,
 )
 
@@ -27,6 +30,9 @@ def test_home_page_renders_strategy_card_entry() -> None:
     assert 'href="/four-asset-compare"' in html
     assert 'href="/three-asset-compare"' in html
     assert 'href="/cashflow-growth-compare"' in html
+    assert 'href="/us-etf-compare"' in html
+    assert 'href="/us-inflation-portfolio"' in html
+    assert 'href="/us-etf-strategy-observer"' in html
     assert 'href="/strategy-backtests"' in html
     assert "策略指数收益曲线对比" in html
     assert "value-compare" in html
@@ -38,6 +44,8 @@ def test_home_page_renders_strategy_card_entry() -> None:
     assert "three-asset" in html
     assert "自由现金流R与创成长R对比" in html
     assert "cashflow-growth" in html
+    assert "美股 ETF 组合对比" in html
+    assert "us-etf" in html
     assert "Cycle 策略回测集合" in html
     assert "strategy-backtests" in html
     assert "/api/strategy-index-compare/history.json" not in html
@@ -45,6 +53,48 @@ def test_home_page_renders_strategy_card_entry() -> None:
     assert "/api/four-asset-compare/history.json" not in html
     assert "/api/three-asset-compare/history.json" not in html
     assert "/api/cashflow-growth-compare/history.json" not in html
+    assert "/api/us-etf-compare/history.json" not in html
+
+
+def test_us_etf_compare_page_renders_six_fund_equal_weight_shell() -> None:
+    html = render_us_etf_compare_page()
+    assert "美股 ETF 组合对比" in html
+    assert "/api/us-etf-compare/history.json" in html
+    assert 'data-synthetic-code="VIRTUAL_US_ETF_EQUAL_WEIGHT"' in html
+    assert 'data-show-background="false"' in html
+    assert "RSP、IWY、MOAT、SPMO" in html
+    assert "PFF" in html and "VNQ" in html
+    assert "每只目标权重 16.67%" in html
+    assert "最长回本时间" in html
+
+
+def test_inflation_portfolio_page_renders_strategy_and_audit_metrics() -> None:
+    html = render_inflation_portfolio_page()
+    assert "美股抗通胀组合策略" in html
+    assert "/api/us-inflation-portfolio/history.json" in html
+    assert 'data-synthetic-code="VIRTUAL_INFLATION_EQUAL_WEIGHT"' in html
+    assert "SPMO 30%、MOAT 20%、IEF 20%、IAU 15%、KMLM 10%、PDBC 5%" in html
+    assert "季度末检查" in html and "10bp" in html
+    assert "六资产等权曲线" in html and "每只 16.67%" in html
+    assert 'id="portfolio-analysis-section"' in html
+    assert "renderPortfolioAnalysis" in html
+    assert "Sortino" in html
+    assert "滚动36个月最差年化收益" in html
+    assert "risk_contributions" in html
+    assert "correlation_matrix" in html
+    assert "annual_turnover" in html
+
+
+def test_us_etf_strategy_observer_page_prioritizes_calmar_and_dynamic_equal_weight() -> None:
+    html = render_us_etf_strategy_observer_page()
+    assert "美股 ETF 策略观察池" in html
+    assert "/api/us-etf-strategy-observer/history.json" in html
+    assert 'data-synthetic-code="VIRTUAL_US_ETF_OBSERVER_EQUAL_WEIGHT"' in html
+    assert "核心 Beta" in html and "风险/风格增强器" in html
+    assert "防御或避险组件" in html and "策略类" in html
+    assert "取消或增加真实 ETF 后，立即按当前选择重新等权计算" in html
+    assert '<th data-sort="annualizedReturnDrawdownRatio" class="sorted-desc">Calmar</th>' in html
+    assert "toggleInstrumentCategory" in html
 
 
 def test_value_compare_page_renders_strategy_index_shell() -> None:

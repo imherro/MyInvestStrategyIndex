@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from myinvest_strategy_index.config import Settings, ensure_runtime_dirs
@@ -17,6 +18,7 @@ class ValueCompareInstrument:
     kind: str
     source: str
     color: str
+    category: str = ""
 
 
 LAYERED_WEIGHT_COMPONENTS: tuple[tuple[str, float], ...] = (
@@ -288,6 +290,86 @@ CASHFLOW_GROWTH_COMPARE_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = (
     ),
 )
 
+US_ETF_COMPARE_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = (
+    ValueCompareInstrument("RSP", "RSP 标普500等权ETF", "us_etf", "Yahoo Finance Adjusted Close", "#E76F51"),
+    ValueCompareInstrument("IWY", "IWY 罗素美国增长ETF", "us_etf", "Yahoo Finance Adjusted Close", "#F4A261"),
+    ValueCompareInstrument("MOAT", "MOAT 晨星宽护城河ETF", "us_etf", "Yahoo Finance Adjusted Close", "#2A9D8F"),
+    ValueCompareInstrument("SPMO", "SPMO 标普500动量ETF", "us_etf", "Yahoo Finance Adjusted Close", "#457B9D"),
+    ValueCompareInstrument("PFF", "PFF 美国优先股与收益证券ETF", "us_etf", "Yahoo Finance Adjusted Close", "#7B2CBF"),
+    ValueCompareInstrument("VNQ", "VNQ 美国房地产ETF", "us_etf", "Yahoo Finance Adjusted Close", "#6B705C"),
+    ValueCompareInstrument(
+        "VIRTUAL_US_ETF_EQUAL_WEIGHT",
+        "美股六ETF等权组合",
+        "synthetic_equal_weight",
+        "RSP/IWY/MOAT/SPMO/PFF/VNQ 每只目标权重16.67%",
+        "#111827",
+    ),
+)
+
+INFLATION_PORTFOLIO_COMPONENTS: tuple[tuple[str, float], ...] = (
+    ("SPMO", 0.30),
+    ("MOAT", 0.20),
+    ("IEF", 0.20),
+    ("IAU", 0.15),
+    ("KMLM", 0.10),
+    ("PDBC", 0.05),
+)
+INFLATION_PORTFOLIO_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = (
+    ValueCompareInstrument("SPMO", "SPMO 标普500动量ETF", "us_etf", "Yahoo Finance Adjusted Close", "#E76F51"),
+    ValueCompareInstrument("MOAT", "MOAT 晨星宽护城河ETF", "us_etf", "Yahoo Finance Adjusted Close", "#F4A261"),
+    ValueCompareInstrument("IEF", "IEF 7-10年美国国债ETF", "us_etf", "Yahoo Finance Adjusted Close", "#457B9D"),
+    ValueCompareInstrument("IAU", "IAU 黄金ETF", "us_etf", "Yahoo Finance Adjusted Close", "#D4A017"),
+    ValueCompareInstrument("KMLM", "KMLM 管理期货策略ETF", "us_etf", "Yahoo Finance Adjusted Close", "#2A9D8F"),
+    ValueCompareInstrument("PDBC", "PDBC 多元商品策略ETF", "us_etf", "Yahoo Finance Adjusted Close", "#7B2CBF"),
+    ValueCompareInstrument(
+        "VIRTUAL_INFLATION_PORTFOLIO",
+        "美股抗通胀固定权重组合",
+        "synthetic_threshold_rebalanced",
+        "SPMO30%+MOAT20%+IEF20%+IAU15%+KMLM10%+PDBC5%；季度检查、阈值触发",
+        "#111827",
+    ),
+    ValueCompareInstrument(
+        "VIRTUAL_INFLATION_EQUAL_WEIGHT",
+        "六资产等权对照组合",
+        "synthetic_equal_weight",
+        "根据当前勾选资产按日动态等权",
+        "#0891B2",
+    ),
+)
+
+US_ETF_OBSERVER_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = tuple(
+    ValueCompareInstrument(code, name, "us_etf", "Yahoo Finance Adjusted Close", color, category)
+    for category, items in (
+        ("核心 Beta", (
+            ("VOO", "VOO 标普500ETF", "#1D3557"), ("SPY", "SPY 标普500ETF", "#457B9D"),
+            ("VTI", "VTI 美国全市场ETF", "#2A6F97"), ("ITOT", "ITOT 美国全市场ETF", "#468FAF"),
+            ("QQQ", "QQQ 纳斯达克100ETF", "#7B2CBF"), ("IJH", "IJH 标普中盘400ETF", "#F4A261"),
+            ("IWM", "IWM 罗素2000ETF", "#E76F51"),
+        )),
+        ("风险/风格增强器", (
+            ("VUG", "VUG 美国成长ETF", "#8E44AD"), ("VTV", "VTV 美国价值ETF", "#A44A3F"),
+            ("SPLV", "SPLV 标普500低波动ETF", "#2A9D8F"), ("SCHD", "SCHD 美国红利ETF", "#588157"),
+            ("MTUM", "MTUM 美国动量ETF", "#D97706"), ("COWZ", "COWZ 美国现金牛ETF", "#B56576"),
+            ("VYM", "VYM 高股息ETF", "#6A994E"),
+        )),
+        ("防御或避险组件", (
+            ("XLP", "XLP 必需消费ETF", "#386641"), ("XLU", "XLU 公用事业ETF", "#6B705C"),
+            ("GLD", "GLD 黄金ETF", "#D4A017"), ("SGOV", "SGOV 0-3月美国国债ETF", "#64748B"),
+            ("VNQ", "VNQ 美国房地产ETF", "#9C6644"), ("PFF", "PFF 美国优先股ETF", "#5A189A"),
+        )),
+        ("策略类", (
+            ("USMV", "USMV 美国最小波动ETF", "#0081A7"), ("DIVO", "DIVO 股息与期权收益ETF", "#00AFB9"),
+            ("JEPI", "JEPI 股票溢价收益ETF", "#F07167"),
+        )),
+    )
+    for code, name, color in items
+) + (
+    ValueCompareInstrument(
+        "VIRTUAL_US_ETF_OBSERVER_EQUAL_WEIGHT", "当前选择动态等权组合", "synthetic_equal_weight",
+        "当前勾选的真实ETF按日动态等权", "#111827", "组合对照",
+    ),
+)
+
 
 def get_value_compare_payload(settings: Settings, *, refresh: bool = False) -> dict[str, object]:
     return _get_compare_payload(
@@ -344,6 +426,39 @@ def get_cashflow_growth_compare_payload(settings: Settings, *, refresh: bool = F
     )
 
 
+def get_us_etf_compare_payload(settings: Settings, *, refresh: bool = False) -> dict[str, object]:
+    return _get_compare_payload(
+        settings,
+        instruments=US_ETF_COMPARE_INSTRUMENTS,
+        background=None,
+        layered_components=(),
+        layered_cash_weight=0.0,
+        refresh=refresh,
+    )
+
+
+def get_inflation_portfolio_payload(settings: Settings, *, refresh: bool = False) -> dict[str, object]:
+    return _get_compare_payload(
+        settings,
+        instruments=INFLATION_PORTFOLIO_INSTRUMENTS,
+        background=None,
+        layered_components=INFLATION_PORTFOLIO_COMPONENTS,
+        layered_cash_weight=0.0,
+        refresh=refresh,
+    )
+
+
+def get_us_etf_observer_payload(settings: Settings, *, refresh: bool = False) -> dict[str, object]:
+    return _get_compare_payload(
+        settings,
+        instruments=US_ETF_OBSERVER_INSTRUMENTS,
+        background=None,
+        layered_components=(),
+        layered_cash_weight=0.0,
+        refresh=refresh,
+    )
+
+
 def _get_compare_payload(
     settings: Settings,
     *,
@@ -376,6 +491,7 @@ def _get_compare_payload(
     component_histories = [histories[item.code] for item in component_items]
     component_codes = [item.code for item in component_items]
     rebalance_analysis: dict[str, object] | None = None
+    portfolio_analysis: dict[str, object] | None = None
     drawdown_rebalance_result: tuple[dict[str, object], pd.DataFrame] | None = None
     for instrument in instruments:
         if not instrument.kind.startswith("synthetic_"):
@@ -398,6 +514,13 @@ def _get_compare_payload(
                     layered_components=layered_components,
                     cash_weight=layered_cash_weight,
                 )
+            elif instrument.kind == "synthetic_threshold_rebalanced":
+                analysis, history = _build_threshold_portfolio_analysis(
+                    histories,
+                    components=layered_components,
+                )
+                if instrument.code == "VIRTUAL_INFLATION_PORTFOLIO":
+                    portfolio_analysis = analysis
             else:
                 history = _build_equal_weight_history(component_histories)
             series[instrument.code] = _history_records(history)
@@ -421,6 +544,7 @@ def _get_compare_payload(
         "background": asdict(background) if background is not None else None,
         "background_series": background_series,
         "rebalance_analysis": rebalance_analysis,
+        "portfolio_analysis": portfolio_analysis,
         "errors": errors,
     }
 
@@ -434,7 +558,9 @@ def load_or_fetch_value_history(
     if path.exists() and not refresh:
         return _load_cached_history(path)
 
-    if instrument.kind == "etf":
+    if instrument.kind == "us_etf":
+        history = _fetch_yahoo_etf(instrument)
+    elif instrument.kind == "etf":
         history = _fetch_tushare_fund(settings, instrument)
     else:
         history = _fetch_tushare_index(settings, instrument)
@@ -625,7 +751,7 @@ def _aligned_value_frame(histories: list[pd.DataFrame], component_codes: list[st
     if len(histories) < 2:
         raise RuntimeError("At least two index histories are required for rebalance analysis")
     series_list: list[pd.Series] = []
-    for code, history in zip(component_codes, histories, strict=False):
+    for code, history in zip(component_codes, histories):
         frame = history.sort_values("date").drop_duplicates("date", keep="last").copy()
         if frame.empty:
             continue
@@ -864,6 +990,140 @@ def _build_layered_weight_history(
     return _normalize_history(pd.DataFrame(rows))
 
 
+def _build_threshold_portfolio_analysis(
+    histories: dict[str, pd.DataFrame],
+    *,
+    components: tuple[tuple[str, float], ...],
+    absolute_threshold: float = 0.03,
+    relative_threshold: float = 0.25,
+    one_way_cost_bps: float = 10.0,
+) -> tuple[dict[str, object], pd.DataFrame]:
+    codes = [code for code, _ in components]
+    missing = [code for code in codes if code not in histories]
+    if missing:
+        raise RuntimeError(f"Missing portfolio components: {', '.join(missing)}")
+    target = pd.Series(dict(components), dtype=float)
+    if (target < 0).any() or not math.isclose(float(target.sum()), 1.0, abs_tol=1e-9):
+        raise RuntimeError("Portfolio weights must be long-only and sum to 1.0")
+
+    monthly_values = []
+    for code in codes:
+        frame = histories[code].sort_values("date").drop_duplicates("date", keep="last")
+        series = frame.set_index("date")["value"].astype(float).sort_index()
+        monthly = series.groupby(series.index.to_period("M")).tail(1)
+        monthly_values.append(monthly.rename(code))
+    values = pd.concat(monthly_values, axis=1, join="inner").dropna()
+    values = values[(values > 0).all(axis=1)]
+    if len(values) < 2:
+        raise RuntimeError("Portfolio components have insufficient overlapping monthly history")
+    asset_returns = values.pct_change().dropna()
+    if asset_returns.empty:
+        raise RuntimeError("Portfolio components have no monthly returns")
+
+    weights = target.copy()
+    nav = 1.0
+    rows = [{"date": values.index[0], "close": nav, "value": nav}]
+    monthly_portfolio_returns: list[tuple[pd.Timestamp, float]] = []
+    turnover_records: list[tuple[pd.Timestamp, float]] = []
+    cost_rate = one_way_cost_bps / 10000.0
+    for date, returns_row in asset_returns.iterrows():
+        gross_return = float((weights * returns_row).sum())
+        nav *= 1.0 + gross_return
+        grown = weights * (1.0 + returns_row)
+        weights = grown / float(grown.sum())
+        turnover = 0.0
+        if date.month in {3, 6, 9, 12}:
+            deviation = (weights - target).abs()
+            relative = deviation / target.replace(0, np.nan)
+            if bool(((deviation >= absolute_threshold) | (relative >= relative_threshold)).any()):
+                turnover = 0.5 * float((weights - target).abs().sum())
+                nav *= 1.0 - turnover * cost_rate
+                weights = target.copy()
+        net_return = nav / float(rows[-1]["value"]) - 1.0
+        monthly_portfolio_returns.append((date, net_return))
+        turnover_records.append((date, turnover))
+        rows.append({"date": date, "close": nav, "value": nav})
+
+    history = _normalize_history(pd.DataFrame(rows))
+    returns = pd.Series(dict(monthly_portfolio_returns)).sort_index()
+    nav_series = pd.Series([row["value"] for row in rows], index=[row["date"] for row in rows], dtype=float)
+    years = max((nav_series.index[-1] - nav_series.index[0]).days / 365.25, 1 / 12)
+    cagr = float((nav_series.iloc[-1] / nav_series.iloc[0]) ** (1 / years) - 1)
+    annual_vol = float(returns.std(ddof=1) * math.sqrt(12)) if len(returns) > 1 else math.nan
+    sharpe = float(returns.mean() / returns.std(ddof=1) * math.sqrt(12)) if returns.std(ddof=1) > 0 else math.nan
+    downside = returns[returns < 0]
+    downside_dev = float(math.sqrt((downside.pow(2).sum() / len(returns))) * math.sqrt(12)) if len(returns) else math.nan
+    sortino = float(returns.mean() * 12 / downside_dev) if downside_dev > 0 else math.nan
+    drawdown = nav_series / nav_series.cummax() - 1.0
+    max_drawdown = float(drawdown.min())
+    trough = drawdown.idxmin()
+    peak = nav_series.loc[:trough].idxmax()
+    recovered = nav_series.loc[trough:][nav_series.loc[trough:] >= nav_series.loc[peak]]
+    recovery_date = recovered.index[0] if not recovered.empty else nav_series.index[-1]
+    recovery_days = int((recovery_date - peak).days)
+    yearly = (1.0 + returns).groupby(returns.index.year).prod() - 1.0
+    rolling12 = (1.0 + returns).rolling(12).apply(np.prod, raw=True) - 1.0
+    rolling36_total = (1.0 + returns).rolling(36).apply(np.prod, raw=True) - 1.0
+    rolling36_annualized = (1.0 + rolling36_total).pow(1 / 3) - 1.0
+    trailing = asset_returns.tail(36)
+    if len(trailing) >= 2:
+        correlation = trailing.corr()
+        covariance = trailing.cov() * 12.0
+    else:
+        correlation = pd.DataFrame(np.eye(len(codes)), index=codes, columns=codes)
+        covariance = pd.DataFrame(np.zeros((len(codes), len(codes))), index=codes, columns=codes)
+    vector = target.reindex(codes).to_numpy()
+    marginal = covariance.to_numpy() @ vector
+    variance = float(vector @ marginal)
+    contributions = vector * marginal / variance if variance > 0 else np.zeros(len(codes))
+    turnover_series = pd.Series(dict(turnover_records))
+    annual_turnover = turnover_series.groupby(turnover_series.index.year).sum()
+
+    def finite(value: float) -> float | None:
+        return round(float(value), 8) if math.isfinite(float(value)) else None
+
+    analysis = {
+        "methodology": {
+            "return_frequency": "monthly",
+            "price_field": "Adjusted Close",
+            "review_frequency": "quarterly",
+            "absolute_threshold": absolute_threshold,
+            "relative_threshold": relative_threshold,
+            "one_way_cost_bps": one_way_cost_bps,
+            "long_only": True,
+            "lookahead": False,
+        },
+        "start_date": nav_series.index[0].strftime("%Y-%m-%d"),
+        "end_date": nav_series.index[-1].strftime("%Y-%m-%d"),
+        "metrics": {
+            "cagr": finite(cagr),
+            "total_return": finite(nav_series.iloc[-1] - 1.0),
+            "annualized_volatility": finite(annual_vol),
+            "max_drawdown": finite(max_drawdown),
+            "max_drawdown_recovery_days": recovery_days,
+            "max_drawdown_recovered": not recovered.empty,
+            "sharpe": finite(sharpe),
+            "sortino": finite(sortino),
+            "calmar": finite(cagr / abs(max_drawdown)) if max_drawdown < 0 else None,
+            "worst_month": finite(returns.min()),
+            "worst_month_date": returns.idxmin().strftime("%Y-%m-%d"),
+            "worst_year": finite(yearly.min()),
+            "worst_year_label": str(int(yearly.idxmin())),
+            "rolling_12m_worst": finite(rolling12.min()),
+            "rolling_36m_latest_annualized": finite(rolling36_annualized.dropna().iloc[-1]) if not rolling36_annualized.dropna().empty else None,
+            "rolling_36m_worst_annualized": finite(rolling36_annualized.min()),
+            "annual_turnover_average": finite(annual_turnover.mean()),
+        },
+        "correlation_window_months": min(36, len(trailing)),
+        "correlation_matrix": {
+            code: {other: finite(correlation.loc[code, other]) for other in codes} for code in codes
+        },
+        "risk_contributions": {code: finite(value) for code, value in zip(codes, contributions)},
+        "annual_turnover": {str(int(year)): finite(value) for year, value in annual_turnover.items()},
+    }
+    return analysis, history
+
+
 def _trailing_volatility(values: list[float], window: int) -> float:
     recent = [item for item in values[-window:] if math.isfinite(item)]
     if len(recent) < 20:
@@ -937,6 +1197,32 @@ def _fetch_tushare_index(settings: Settings, instrument: ValueCompareInstrument)
     frame["close"] = pd.to_numeric(frame["close"], errors="coerce")
     frame["value"] = frame["close"]
     return _normalize_history(frame[["date", "close", "value"]])
+
+
+def _fetch_yahoo_etf(instrument: ValueCompareInstrument) -> pd.DataFrame:
+    try:
+        import yfinance as yf
+    except Exception as exc:  # pragma: no cover - import guard
+        raise RuntimeError(f"yfinance import failed: {exc}") from exc
+
+    daily = yf.download(
+        instrument.code,
+        start="2000-01-01",
+        auto_adjust=False,
+        progress=False,
+        actions=False,
+        threads=False,
+    )
+    if daily.empty:
+        raise RuntimeError(f"Yahoo Finance returned no rows for {instrument.code}")
+    adjusted = daily["Adj Close"] if "Adj Close" in daily else daily["Close"]
+    close = daily["Close"]
+    if isinstance(adjusted, pd.DataFrame):
+        adjusted = adjusted.iloc[:, 0]
+    if isinstance(close, pd.DataFrame):
+        close = close.iloc[:, 0]
+    frame = pd.DataFrame({"date": daily.index, "close": close.to_numpy(), "value": adjusted.to_numpy()})
+    return _normalize_history(frame)
 
 
 def _fetch_tushare_fund(settings: Settings, instrument: ValueCompareInstrument) -> pd.DataFrame:

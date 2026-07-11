@@ -7,13 +7,82 @@ from myinvest_strategy_index.value_compare import (
     DEFAULT_VALUE_COMPARE_INSTRUMENTS,
     FOUR_ASSET_CALMAR_INSTRUMENTS,
     THREE_ASSET_CALMAR_INSTRUMENTS,
+    US_ETF_COMPARE_INSTRUMENTS,
+    INFLATION_PORTFOLIO_INSTRUMENTS,
+    US_ETF_OBSERVER_INSTRUMENTS,
     VALUE_COMPARE_BACKGROUND,
     get_cashflow_growth_compare_payload,
     get_chinext_total_return_payload,
     get_four_asset_calmar_payload,
     get_three_asset_calmar_payload,
+    get_us_etf_compare_payload,
+    get_inflation_portfolio_payload,
+    get_us_etf_observer_payload,
     get_value_compare_payload,
 )
+
+
+def test_us_etf_payload_includes_six_funds_and_equal_weight_model(tmp_path) -> None:
+    settings = load_settings(root=tmp_path, env_file=tmp_path / ".env")
+    settings.cache_dir.mkdir(parents=True)
+    second_values = {"RSP": 1100, "IWY": 1200, "MOAT": 1300, "SPMO": 1400, "PFF": 900, "VNQ": 1000}
+    for instrument in US_ETF_COMPARE_INSTRUMENTS:
+        if instrument.kind.startswith("synthetic_"):
+            continue
+        (settings.cache_dir / f"value_compare_{instrument.code}.csv").write_text(
+            "date,close,value\n2021-01-04,1000,1000\n"
+            f"2021-02-05,{second_values[instrument.code]},{second_values[instrument.code]}\n",
+            encoding="utf-8",
+        )
+
+    payload = get_us_etf_compare_payload(settings)
+
+    assert payload["ok"] is True
+    assert not payload["errors"]
+    assert set(payload["series"]) == {"RSP", "IWY", "MOAT", "SPMO", "PFF", "VNQ", "VIRTUAL_US_ETF_EQUAL_WEIGHT"}
+    assert payload["series"]["VIRTUAL_US_ETF_EQUAL_WEIGHT"][1]["value"] == 1.15
+    assert payload["background"] is None
+
+
+def test_inflation_portfolio_payload_uses_requested_fixed_weights(tmp_path) -> None:
+    settings = load_settings(root=tmp_path, env_file=tmp_path / ".env")
+    settings.cache_dir.mkdir(parents=True)
+    second_values = {"SPMO": 1100, "MOAT": 1200, "IEF": 900, "IAU": 1050, "KMLM": 1150, "PDBC": 800}
+    for instrument in INFLATION_PORTFOLIO_INSTRUMENTS:
+        if instrument.kind.startswith("synthetic_"):
+            continue
+        (settings.cache_dir / f"value_compare_{instrument.code}.csv").write_text(
+            "date,close,value\n2021-01-04,1000,1000\n"
+            f"2021-02-05,{second_values[instrument.code]},{second_values[instrument.code]}\n",
+            encoding="utf-8",
+        )
+    payload = get_inflation_portfolio_payload(settings)
+    assert payload["ok"] is True
+    assert not payload["errors"]
+    assert set(payload["series"]) == {"SPMO", "MOAT", "IEF", "IAU", "KMLM", "PDBC", "VIRTUAL_INFLATION_PORTFOLIO", "VIRTUAL_INFLATION_EQUAL_WEIGHT"}
+    assert payload["series"]["VIRTUAL_INFLATION_PORTFOLIO"][1]["value"] == 1.0625
+    assert payload["series"]["VIRTUAL_INFLATION_EQUAL_WEIGHT"][1]["value"] == 1.033333
+
+
+def test_us_etf_observer_payload_groups_23_funds_and_dynamic_equal_weight(tmp_path) -> None:
+    settings = load_settings(root=tmp_path, env_file=tmp_path / ".env")
+    settings.cache_dir.mkdir(parents=True)
+    real = [item for item in US_ETF_OBSERVER_INSTRUMENTS if not item.kind.startswith("synthetic_")]
+    for index, instrument in enumerate(real):
+        (settings.cache_dir / f"value_compare_{instrument.code}.csv").write_text(
+            "date,close,value\n2021-01-04,1000,1000\n"
+            f"2021-01-05,{1000 + index * 10},{1000 + index * 10}\n",
+            encoding="utf-8",
+        )
+    payload = get_us_etf_observer_payload(settings)
+    assert payload["ok"] is True
+    assert not payload["errors"]
+    assert len(real) == 23
+    assert {item["category"] for item in payload["instruments"]} == {
+        "核心 Beta", "风险/风格增强器", "防御或避险组件", "策略类", "组合对照"
+    }
+    assert "VIRTUAL_US_ETF_OBSERVER_EQUAL_WEIGHT" in payload["series"]
+    assert len(payload["series"]) == 24
 
 
 def test_value_compare_payload_reads_cached_histories_with_background(tmp_path) -> None:
