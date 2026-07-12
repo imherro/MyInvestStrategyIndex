@@ -64,7 +64,7 @@ def test_inflation_portfolio_payload_uses_requested_fixed_weights(tmp_path) -> N
     assert payload["series"]["VIRTUAL_INFLATION_EQUAL_WEIGHT"][1]["value"] == 1.033333
 
 
-def test_us_etf_observer_payload_groups_23_funds_and_dynamic_equal_weight(tmp_path) -> None:
+def test_us_etf_observer_payload_groups_29_funds_and_dynamic_equal_weight(tmp_path) -> None:
     settings = load_settings(root=tmp_path, env_file=tmp_path / ".env")
     settings.cache_dir.mkdir(parents=True)
     real = [item for item in US_ETF_OBSERVER_INSTRUMENTS if not item.kind.startswith("synthetic_")]
@@ -77,12 +77,15 @@ def test_us_etf_observer_payload_groups_23_funds_and_dynamic_equal_weight(tmp_pa
     payload = get_us_etf_observer_payload(settings)
     assert payload["ok"] is True
     assert not payload["errors"]
-    assert len(real) == 23
+    assert len(real) == 29
+    codes = {item.code for item in real}
+    assert "SPY" not in codes and "ITOT" not in codes
+    assert {"RSP", "IWY", "MOAT", "SPMO", "PFF", "VNQ", "IEF", "IAU", "KMLM", "PDBC"} <= codes
     assert {item["category"] for item in payload["instruments"]} == {
         "核心 Beta", "风险/风格增强器", "防御或避险组件", "策略类", "组合对照"
     }
     assert "VIRTUAL_US_ETF_OBSERVER_EQUAL_WEIGHT" in payload["series"]
-    assert len(payload["series"]) == 24
+    assert len(payload["series"]) == 30
 
 
 def test_value_compare_payload_reads_cached_histories_with_background(tmp_path) -> None:

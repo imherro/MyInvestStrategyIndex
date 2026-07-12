@@ -92,6 +92,12 @@ def test_us_etf_strategy_observer_page_prioritizes_calmar_and_dynamic_equal_weig
     assert 'data-synthetic-code="VIRTUAL_US_ETF_OBSERVER_EQUAL_WEIGHT"' in html
     assert "核心 Beta" in html and "风险/风格增强器" in html
     assert "防御或避险组件" in html and "策略类" in html
+    assert "SPY 标普500ETF" not in html and "ITOT 美国全市场ETF" not in html
+    default_unselected = html.split('data-default-unselected-codes="', 1)[1].split('"', 1)[0].split(",")
+    assert "VOO" not in default_unselected
+    assert "VIRTUAL_US_ETF_OBSERVER_EQUAL_WEIGHT" not in default_unselected
+    assert len(default_unselected) == 28
+    assert {"RSP", "IWY", "MOAT", "SPMO", "PFF", "VNQ", "IEF", "IAU", "KMLM", "PDBC"} <= set(default_unselected)
     assert "取消或增加真实 ETF 后，立即按当前选择重新等权计算" in html
     assert '<th data-sort="annualizedReturnDrawdownRatio" class="sorted-desc">Calmar</th>' in html
     assert "toggleInstrumentCategory" in html

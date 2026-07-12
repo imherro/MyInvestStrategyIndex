@@ -341,8 +341,8 @@ US_ETF_OBSERVER_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = tuple(
     ValueCompareInstrument(code, name, "us_etf", "Yahoo Finance Adjusted Close", color, category)
     for category, items in (
         ("核心 Beta", (
-            ("VOO", "VOO 标普500ETF", "#1D3557"), ("SPY", "SPY 标普500ETF", "#457B9D"),
-            ("VTI", "VTI 美国全市场ETF", "#2A6F97"), ("ITOT", "ITOT 美国全市场ETF", "#468FAF"),
+            ("VOO", "VOO 标普500ETF", "#1D3557"),
+            ("VTI", "VTI 美国全市场ETF", "#2A6F97"),
             ("QQQ", "QQQ 纳斯达克100ETF", "#7B2CBF"), ("IJH", "IJH 标普中盘400ETF", "#F4A261"),
             ("IWM", "IWM 罗素2000ETF", "#E76F51"),
         )),
@@ -351,15 +351,20 @@ US_ETF_OBSERVER_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = tuple(
             ("SPLV", "SPLV 标普500低波动ETF", "#2A9D8F"), ("SCHD", "SCHD 美国红利ETF", "#588157"),
             ("MTUM", "MTUM 美国动量ETF", "#D97706"), ("COWZ", "COWZ 美国现金牛ETF", "#B56576"),
             ("VYM", "VYM 高股息ETF", "#6A994E"),
+            ("RSP", "RSP 标普500等权ETF", "#C44536"), ("IWY", "IWY 罗素美国增长ETF", "#9B5DE5"),
+            ("MOAT", "MOAT 晨星宽护城河ETF", "#007F5F"), ("SPMO", "SPMO 标普500动量ETF", "#4361EE"),
         )),
         ("防御或避险组件", (
             ("XLP", "XLP 必需消费ETF", "#386641"), ("XLU", "XLU 公用事业ETF", "#6B705C"),
             ("GLD", "GLD 黄金ETF", "#D4A017"), ("SGOV", "SGOV 0-3月美国国债ETF", "#64748B"),
             ("VNQ", "VNQ 美国房地产ETF", "#9C6644"), ("PFF", "PFF 美国优先股ETF", "#5A189A"),
+            ("IEF", "IEF 7-10年美国国债ETF", "#277DA1"), ("IAU", "IAU 黄金ETF", "#E9C46A"),
+            ("PDBC", "PDBC 多元商品策略ETF", "#8338EC"),
         )),
         ("策略类", (
             ("USMV", "USMV 美国最小波动ETF", "#0081A7"), ("DIVO", "DIVO 股息与期权收益ETF", "#00AFB9"),
             ("JEPI", "JEPI 股票溢价收益ETF", "#F07167"),
+            ("KMLM", "KMLM 管理期货策略ETF", "#118AB2"),
         )),
     )
     for code, name, color in items

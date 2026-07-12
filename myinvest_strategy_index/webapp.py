@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, urlparse
 from myinvest_strategy_index.config import Settings, load_settings
 from myinvest_strategy_index.cycle_backtests import get_cycle_backtest_detail, get_cycle_backtest_index
 from myinvest_strategy_index.value_compare import (
+    US_ETF_OBSERVER_INSTRUMENTS,
     get_cashflow_growth_compare_payload,
     get_chinext_total_return_payload,
     get_four_asset_calmar_payload,
@@ -3563,6 +3564,11 @@ def render_inflation_portfolio_page() -> str:
 
 def render_us_etf_strategy_observer_page() -> str:
     page = render_etf_compare_page(top_panel_html=_us_etf_observer_panel_html())
+    default_unselected_codes = ",".join(
+        item.code
+        for item in US_ETF_OBSERVER_INSTRUMENTS
+        if item.code != "VOO" and not item.kind.startswith("synthetic_")
+    )
     replacements = {
         "ETF 复权对比 - MyInvestStrategyIndex": "美股 ETF 策略观察池 - MyInvestStrategyIndex",
         "ETF 复权价值曲线对比": "美股 ETF 策略观察池",
@@ -3571,7 +3577,8 @@ def render_us_etf_strategy_observer_page() -> str:
         "<body>": ('<body data-api-path="/api/us-etf-strategy-observer/history.json" data-extra-metrics="true" '
             'data-synthetic-code="VIRTUAL_US_ETF_OBSERVER_EQUAL_WEIGHT" data-anchor-synthetic="false" '
             'data-show-background="false" data-longest-mode-label="最早起" '
-            'data-longest-base-text="当前ETF自身起点=0%">'),
+            f'data-longest-base-text="当前ETF自身起点=0%" '
+            f'data-default-unselected-codes="{default_unselected_codes}">'),
         "2012起": "最早起",
         "复权价值曲线": "ETF与动态等权资金曲线",
         "年化收益/最大回撤": "Calmar",
