@@ -149,6 +149,14 @@ def test_value_compare_page_renders_strategy_index_shell() -> None:
     assert "backgroundNormalizedSeries" in html
     assert "background-line" in html
     assert "最长回本时间" in html
+    assert 'class="control-group time-controls"' in html
+    assert "ETF选择" in html
+    assert 'class="chart-toolbar"' in html
+    assert 'id="chart-tooltip"' in html
+    assert 'id="interaction-select"' in html
+    assert "showChartCrosshair" in html
+    assert "drawRangeSelection" in html
+    assert 'setInteractionMode("select")' in html
 
 
 def test_chinext_compare_page_renders_three_total_return_indices() -> None:

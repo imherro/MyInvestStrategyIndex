@@ -1486,10 +1486,18 @@ def render_etf_compare_page(top_panel_html: str = "") -> str:
     .stack { display: grid; gap: 16px; }
     .controls-layout {
       display: grid;
-      grid-template-columns: minmax(420px, 1.4fr) minmax(320px, 0.95fr) minmax(210px, 0.65fr) minmax(240px, 0.75fr);
-      gap: 16px;
+      grid-template-columns: 1fr;
+      gap: 14px;
       align-items: start;
     }
+    .time-controls {
+      display: grid;
+      grid-template-columns: auto minmax(340px, 1fr) minmax(260px, 0.55fr) auto;
+      gap: 12px;
+      align-items: end;
+    }
+    .time-controls .date-row { min-width: 260px; }
+    .time-controls .status { grid-column: 1 / -1; }
     .control-group { display: grid; gap: 10px; }
     .control-title {
       font-size: 13px;
@@ -1710,6 +1718,54 @@ def render_etf_compare_page(top_panel_html: str = "") -> str:
     #value-chart.dragging {
       cursor: grabbing;
     }
+    #value-chart.selecting { cursor: crosshair; }
+    .chart-stage {
+      position: relative;
+      padding-top: 42px;
+    }
+    .chart-toolbar {
+      position: absolute;
+      z-index: 4;
+      top: 2px;
+      left: 58px;
+      right: 20px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      pointer-events: none;
+    }
+    .chart-toolbar > * { pointer-events: auto; }
+    .chart-toolbar .tool-label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      margin: 0 2px 0 6px;
+    }
+    .chart-toolbar button { min-height: 28px; padding: 4px 8px; font-size: 11px; }
+    .chart-tooltip {
+      position: absolute;
+      z-index: 6;
+      display: none;
+      min-width: 190px;
+      max-width: 290px;
+      max-height: 260px;
+      overflow: auto;
+      padding: 9px 10px;
+      border: 1px solid rgba(15, 23, 42, 0.18);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.96);
+      box-shadow: 0 10px 28px rgba(15, 23, 42, 0.16);
+      color: var(--text);
+      font-size: 11px;
+      line-height: 1.45;
+      pointer-events: none;
+      backdrop-filter: blur(8px);
+    }
+    .tooltip-date { font-weight: 750; margin-bottom: 5px; }
+    .tooltip-row { display: grid; grid-template-columns: 8px minmax(90px, 1fr) auto; gap: 6px; align-items: center; }
+    .tooltip-dot { width: 7px; height: 7px; border-radius: 50%; }
+    .tooltip-value { font-variant-numeric: tabular-nums; font-weight: 650; }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -1754,7 +1810,9 @@ def render_etf_compare_page(top_panel_html: str = "") -> str:
       .bar { align-items: flex-start; flex-direction: column; }
       .meta { justify-content: flex-start; }
       .controls-layout { grid-template-columns: 1fr; }
+      .time-controls { grid-template-columns: 1fr; align-items: start; }
       .date-row { grid-template-columns: 1fr; }
+      .chart-toolbar { left: 8px; right: 8px; }
       th, td { white-space: normal; }
     }
   </style>
@@ -1803,11 +1861,7 @@ def render_etf_compare_page(top_panel_html: str = "") -> str:
     <section class="control-panel">
       <h2 class="panel-title">对比设置</h2>
       <div class="content controls-layout">
-        <div class="control-group">
-          <div class="control-title">标的</div>
-          <div id="instrument-list" class="instrument-list"></div>
-        </div>
-        <div class="control-group">
+        <div class="control-group time-controls">
           <div class="control-title">时间范围</div>
           <div class="quick-buttons">
             <button id="mode-longest" type="button" class="secondary" data-mode="longest">2012起</button>
@@ -1829,31 +1883,16 @@ def render_etf_compare_page(top_panel_html: str = "") -> str:
             <label><span>开始</span><input id="start-date" type="date"></label>
             <label><span>结束</span><input id="end-date" type="date"></label>
           </div>
-        </div>
-        <div class="control-group">
-          <div class="control-title">Y轴</div>
-          <div class="quick-buttons">
-            <button id="axis-return" type="button" data-y-axis="return">累计收益率%</button>
-            <button id="axis-multiple" type="button" class="secondary" data-y-axis="multiple">净值倍数</button>
-            <button id="axis-log" type="button" class="secondary" data-y-axis="log">对数</button>
-          </div>
-        </div>
-        <div class="control-group">
-          <div class="control-title">操作</div>
-          <div class="actions">
-            <button id="pan-left" type="button" class="secondary icon-button" title="左移" aria-label="左移">←</button>
-            <button id="zoom-in" type="button" class="secondary icon-button" title="放大" aria-label="放大">+</button>
-            <button id="zoom-out" type="button" class="secondary icon-button" title="缩小" aria-label="缩小">-</button>
-            <button id="pan-right" type="button" class="secondary icon-button" title="右移" aria-label="右移">→</button>
-            <button id="reset-range" type="button" class="secondary">恢复全区间</button>
-            <button id="refresh-data" type="button">更新数据</button>
-          </div>
           <div id="status" class="status">准备加载数据...</div>
-          <div id="risk-parity-weights" class="risk-parity-weights" hidden></div>
+        </div>
+        <div class="control-group">
+          <div class="control-title">ETF选择</div>
+          <div id="instrument-list" class="instrument-list"></div>
         </div>
         <div class="note control-note">
           2012起模式按最早可用 ETF 开始展示；后上市 ETF 从上市日对应的虚拟等权ETF位置接上。虚拟等权ETF按 512890、510500、510300、159915 四只真实 ETF 中当日已有数据的成分动态等权；480092 为自由现金流R收益指数点位代理。
         </div>
+        <div id="risk-parity-weights" class="risk-parity-weights" hidden></div>
       </div>
     </section>
     <div class="stack">
@@ -1863,7 +1902,25 @@ def render_etf_compare_page(top_panel_html: str = "") -> str:
             <div id="value-chart-title" class="chart-title" data-base-title="复权价值曲线">复权价值曲线</div>
             <div id="range-hint" class="chart-meta">-</div>
           </div>
-          <svg id="value-chart" viewBox="0 0 1000 390" role="img" aria-label="复权价值曲线"></svg>
+          <div class="chart-stage">
+            <div class="chart-toolbar" aria-label="图表工具">
+              <span class="tool-label">Y轴</span>
+              <button id="axis-return" type="button" data-y-axis="return">累计收益率%</button>
+              <button id="axis-multiple" type="button" class="secondary" data-y-axis="multiple">净值倍数</button>
+              <button id="axis-log" type="button" class="secondary" data-y-axis="log">对数</button>
+              <span class="tool-label">操作</span>
+              <button id="interaction-pan" type="button">拖动</button>
+              <button id="interaction-select" type="button" class="secondary">框选放大</button>
+              <button id="pan-left" type="button" class="secondary icon-button" title="左移" aria-label="左移">←</button>
+              <button id="zoom-in" type="button" class="secondary icon-button" title="放大" aria-label="放大">+</button>
+              <button id="zoom-out" type="button" class="secondary icon-button" title="缩小" aria-label="缩小">-</button>
+              <button id="pan-right" type="button" class="secondary icon-button" title="右移" aria-label="右移">→</button>
+              <button id="reset-range" type="button" class="secondary">恢复全区间</button>
+              <button id="refresh-data" type="button">更新数据</button>
+            </div>
+            <svg id="value-chart" viewBox="0 0 1000 390" role="img" aria-label="复权价值曲线"></svg>
+            <div id="chart-tooltip" class="chart-tooltip" role="status" aria-live="polite"></div>
+          </div>
         </div>
       </section>
       <section class="drawdown-chart">
@@ -1941,6 +1998,8 @@ const state = {
   payload: null,
   selected: new Set(),
   drag: null,
+  interactionMode: "pan",
+  chartView: null,
   dynamicSyntheticRows: [],
   dynamicRiskParityRows: [],
   dynamicDrawdownRiskRows: [],
@@ -1958,6 +2017,7 @@ const dom = {
   hint: document.getElementById("range-hint"),
   valueTitle: document.getElementById("value-chart-title"),
   valueChart: document.getElementById("value-chart"),
+  chartTooltip: document.getElementById("chart-tooltip"),
   drawdownChart: document.getElementById("drawdown-chart"),
   barChart: document.getElementById("bar-chart"),
   metricsBody: document.getElementById("metrics-body"),
@@ -1982,6 +2042,8 @@ const dom = {
   axisReturn: document.getElementById("axis-return"),
   axisMultiple: document.getElementById("axis-multiple"),
   axisLog: document.getElementById("axis-log"),
+  interactionPan: document.getElementById("interaction-pan"),
+  interactionSelect: document.getElementById("interaction-select"),
   modeCommon: document.getElementById("mode-common"),
   modeLongest: document.getElementById("mode-longest"),
 };
@@ -2619,6 +2681,7 @@ function backgroundNormalizedSeries(range) {
 
 function renderAll() {
   if (!state.payload) return;
+  clearChartInteraction();
   const range = activeRange();
   const codes = selectedCodes();
   if (!range || !codes.length) {
@@ -2826,7 +2889,10 @@ function renderLineChart(svg, box, series, mode, background = null) {
   const height = box.height - plot.top - plot.bottom;
   const renderSeries = background && mode === "value" ? [background, ...series] : series;
   const allPoints = renderSeries.flatMap((item) => item.values);
-  if (!allPoints.length) return;
+  if (!allPoints.length) {
+    if (mode === "value") state.chartView = null;
+    return;
+  }
   const xMin = Math.min(...allPoints.map((item) => item.dateMs));
   const xMax = Math.max(...allPoints.map((item) => item.dateMs));
   const pointY = (point) => mode === "drawdown" ? point.drawdown : valueAxisY(point.value);
@@ -2861,6 +2927,9 @@ function renderLineChart(svg, box, series, mode, background = null) {
         return plot.top + (1 - (Math.log(safeValue) - Math.log(safeMin)) / Math.max(Math.log(yMax) - Math.log(safeMin), 1e-9)) * height;
       }
     : (value) => plot.top + (1 - (value - yMin) / Math.max(yMax - yMin, 1)) * height;
+  if (mode === "value") {
+    state.chartView = { series, xMin, xMax, xScale, yScale, pointY, plot, width, height };
+  }
   drawGrid(svg, box, xMin, xMax, yMin, yMax, mode, yScale);
   if (mode === "value") {
     const baseline = valueAxisConfig().baseline;
@@ -3116,6 +3185,82 @@ function svgPointer(svg, event) {
   return point.matrixTransform(svg.getScreenCTM().inverse());
 }
 
+function clearChartInteraction() {
+  dom.valueChart.querySelector(".chart-interaction-layer")?.remove();
+  if (dom.chartTooltip) dom.chartTooltip.style.display = "none";
+}
+
+function nearestSeriesPoint(values, targetDate) {
+  if (!values.length) return null;
+  let low = 0;
+  let high = values.length - 1;
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    if (values[mid].dateMs < targetDate) low = mid + 1;
+    else high = mid;
+  }
+  const right = values[low];
+  const left = low > 0 ? values[low - 1] : right;
+  return Math.abs(left.dateMs - targetDate) <= Math.abs(right.dateMs - targetDate) ? left : right;
+}
+
+function showChartCrosshair(event, point) {
+  if (!state.chartView || state.drag) return;
+  const { series, xMin, xMax, xScale, yScale, pointY, plot, width, height } = state.chartView;
+  const plotRight = plot.left + width;
+  const plotBottom = plot.top + height;
+  if (point.x < plot.left || point.x > plotRight || point.y < plot.top || point.y > plotBottom) {
+    clearChartInteraction();
+    return;
+  }
+  const targetDate = xMin + ((point.x - plot.left) / width) * (xMax - xMin);
+  const points = series.map((item) => ({ item, point: nearestSeriesPoint(item.values, targetDate) })).filter((item) => item.point);
+  if (!points.length) return;
+  const dateMs = points.reduce((best, item) => Math.abs(item.point.dateMs - targetDate) < Math.abs(best - targetDate) ? item.point.dateMs : best, points[0].point.dateMs);
+  const x = xScale(dateMs);
+  dom.valueChart.querySelector(".chart-interaction-layer")?.remove();
+  const layer = svgEl("g", { class: "chart-interaction-layer", "pointer-events": "none" });
+  layer.appendChild(svgEl("line", { x1: x, x2: x, y1: plot.top, y2: plotBottom, stroke: "#334155", "stroke-width": 1, "stroke-dasharray": "4 4" }));
+  layer.appendChild(svgEl("line", { x1: plot.left, x2: plotRight, y1: point.y, y2: point.y, stroke: "#64748b", "stroke-width": 1, "stroke-dasharray": "4 4" }));
+  points.forEach(({ item, point: seriesPoint }) => {
+    const instrument = instrumentByCode(item.code);
+    layer.appendChild(svgEl("circle", { cx: xScale(seriesPoint.dateMs), cy: yScale(pointY(seriesPoint)), r: 3.5, fill: instrument.color, stroke: "#fff", "stroke-width": 1.5 }));
+  });
+  dom.valueChart.appendChild(layer);
+  if (dom.chartTooltip) {
+    dom.chartTooltip.innerHTML = `<div class="tooltip-date">${fmtDate(dateMs)}</div>` + points.map(({ item, point: seriesPoint }) => {
+      const instrument = instrumentByCode(item.code);
+      return `<div class="tooltip-row"><span class="tooltip-dot" style="background:${instrument.color}"></span><span>${instrument.name}</span><span class="tooltip-value">${formatValueAxis(valueAxisY(seriesPoint.value))}</span></div>`;
+    }).join("");
+    const stage = dom.valueChart.parentElement;
+    const rect = stage.getBoundingClientRect();
+    const left = Math.min(event.clientX - rect.left + 14, Math.max(8, rect.width - 306));
+    const top = Math.max(48, Math.min(event.clientY - rect.top + 14, rect.height - 220));
+    dom.chartTooltip.style.left = `${left}px`;
+    dom.chartTooltip.style.top = `${top}px`;
+    dom.chartTooltip.style.display = "block";
+  }
+}
+
+function drawRangeSelection(startX, currentX) {
+  if (!state.chartView) return;
+  dom.valueChart.querySelector(".chart-interaction-layer")?.remove();
+  const { plot, height } = state.chartView;
+  const x = Math.min(startX, currentX);
+  const width = Math.abs(currentX - startX);
+  const layer = svgEl("g", { class: "chart-interaction-layer", "pointer-events": "none" });
+  layer.appendChild(svgEl("rect", { x, y: plot.top, width, height, fill: "#2563eb", opacity: 0.12, stroke: "#2563eb", "stroke-width": 1.5 }));
+  dom.valueChart.appendChild(layer);
+}
+
+function setInteractionMode(mode) {
+  state.interactionMode = mode === "select" ? "select" : "pan";
+  dom.interactionPan.classList.toggle("secondary", state.interactionMode !== "pan");
+  dom.interactionSelect.classList.toggle("secondary", state.interactionMode !== "select");
+  dom.valueChart.classList.toggle("selecting", state.interactionMode === "select");
+  clearChartInteraction();
+}
+
 function installChartPan() {
   const svg = dom.valueChart;
   svg.addEventListener("pointerdown", (event) => {
@@ -3126,36 +3271,53 @@ function installChartPan() {
     const plotRight = VALUE_BOX.width - plot.right;
     const plotBottom = VALUE_BOX.height - plot.bottom;
     if (point.x < plot.left || point.x > plotRight || point.y < plot.top || point.y > plotBottom) return;
-    state.drag = { startX: point.x, currentX: point.x, range };
-    svg.classList.add("dragging");
+    state.drag = { startX: point.x, currentX: point.x, range, mode: state.interactionMode };
+    if (state.interactionMode === "pan") svg.classList.add("dragging");
+    else drawRangeSelection(point.x, point.x);
     svg.setPointerCapture(event.pointerId);
   });
   svg.addEventListener("pointermove", (event) => {
-    if (!state.drag) return;
     const point = svgPointer(svg, event);
+    if (!state.drag) {
+      showChartCrosshair(event, point);
+      return;
+    }
     const plot = VALUE_BOX.plot;
     const plotRight = VALUE_BOX.width - plot.right;
     const x = Math.max(plot.left, Math.min(plotRight, point.x));
     state.drag.currentX = x;
+    if (state.drag.mode === "select") drawRangeSelection(state.drag.startX, x);
   });
   svg.addEventListener("pointerup", () => {
     if (!state.drag) return;
     const plot = VALUE_BOX.plot;
     const width = VALUE_BOX.width - plot.left - plot.right;
     const deltaX = state.drag.currentX - state.drag.startX;
-    const range = state.drag.range;
+    const drag = state.drag;
+    const range = drag.range;
     svg.classList.remove("dragging");
     state.drag = null;
+    clearChartInteraction();
     if (Math.abs(deltaX) < 8) return;
     const span = range.end - range.start;
-    const shift = -(deltaX / Math.max(width, 1)) * span;
-    setActiveRange(range.start + shift, range.end + shift);
+    if (drag.mode === "select") {
+      const left = Math.min(drag.startX, drag.currentX);
+      const right = Math.max(drag.startX, drag.currentX);
+      const start = range.start + ((left - plot.left) / width) * span;
+      const end = range.start + ((right - plot.left) / width) * span;
+      setActiveRange(start, end);
+    } else {
+      const shift = -(deltaX / Math.max(width, 1)) * span;
+      setActiveRange(range.start + shift, range.end + shift);
+    }
   });
   svg.addEventListener("pointercancel", () => {
     if (!state.drag) return;
     svg.classList.remove("dragging");
     state.drag = null;
+    clearChartInteraction();
   });
+  svg.addEventListener("pointerleave", () => { if (!state.drag) clearChartInteraction(); });
 }
 
 document.querySelectorAll("[data-range]").forEach((button) => {
@@ -3173,6 +3335,8 @@ document.querySelectorAll("[data-mode]").forEach((button) => {
 document.querySelectorAll("[data-y-axis]").forEach((button) => {
   button.addEventListener("click", () => setValueAxisMode(button.dataset.yAxis));
 });
+dom.interactionPan.addEventListener("click", () => setInteractionMode("pan"));
+dom.interactionSelect.addEventListener("click", () => setInteractionMode("select"));
 document.querySelectorAll("th[data-sort]").forEach((header) => {
   header.addEventListener("click", () => {
     const key = header.dataset.sort;
@@ -3195,6 +3359,7 @@ dom.reset.addEventListener("click", () => { setRangeToCurrentMode(); renderAll()
 dom.refresh.addEventListener("click", () => loadHistory(true));
 updateValueAxisControls();
 installChartPan();
+setInteractionMode("pan");
 loadHistory(false);
 </script>
 </body>
