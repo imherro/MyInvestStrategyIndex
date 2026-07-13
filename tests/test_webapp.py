@@ -154,6 +154,11 @@ def test_value_compare_page_renders_strategy_index_shell() -> None:
     assert "background_series" in html
     assert "backgroundNormalizedSeries" in html
     assert "background-line" in html
+    assert 'data-show-index-relationships="true"' in html
+    assert "指数成分重叠与相关性" in html
+    assert "renderIndexRelationships" in html
+    assert "日收益相关性" in html
+    assert "成分权重重叠" in html
     assert "最长回本时间" in html
     assert 'class="control-group time-controls"' in html
     assert "ETF选择" in html

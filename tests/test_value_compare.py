@@ -177,6 +177,55 @@ def test_layered_weight_model_uses_calmar_full_sample_weights(tmp_path) -> None:
     assert payload["series"]["VIRTUAL_LAYERED_WEIGHT_STRATEGY"][1]["value"] == 1.098418
 
 
+def test_value_compare_payload_includes_return_correlation_and_component_overlap(tmp_path) -> None:
+    settings = load_settings(root=tmp_path, env_file=tmp_path / ".env")
+    settings.cache_dir.mkdir(parents=True)
+    values = {
+        "h21052.CSI": [100, 110, 132],
+        "CN2296.CNI": [100, 120, 156],
+        "h20269.CSI": [100, 90, 99],
+        "480092.CNI": [100, 105, 115.5],
+    }
+    for instrument in [*DEFAULT_VALUE_COMPARE_INSTRUMENTS, VALUE_COMPARE_BACKGROUND]:
+        if instrument.kind.startswith("synthetic_"):
+            continue
+        safe_code = instrument.code.replace(".", "_")
+        series = values.get(instrument.code, [100, 101, 102])
+        (settings.cache_dir / f"value_compare_{safe_code}.csv").write_text(
+            "date,close,value\n"
+            f"2021-01-04,{series[0]},{series[0]}\n"
+            f"2021-01-05,{series[1]},{series[1]}\n"
+            f"2021-01-06,{series[2]},{series[2]}\n",
+            encoding="utf-8",
+        )
+    constituents = {
+        "h21052.CSI": "600001.SH,10\n600002.SH,20\n",
+        "CN2296.CNI": "600002.SH,10\n600003.SH,20\n",
+        "h20269.CSI": "600003.SH,10\n600004.SH,20\n",
+        "480092.CNI": "600001.SH,15\n600003.SH,15\n",
+    }
+    for code, rows in constituents.items():
+        safe_code = code.replace(".", "_")
+        (settings.cache_dir / f"index_components_{safe_code}.csv").write_text(
+            "con_code,trade_date,weight\n"
+            + "".join(f"{row.split(',')[0]},2021-06-11,{row.split(',')[1]}" for row in rows.splitlines(True)),
+            encoding="utf-8",
+        )
+
+    payload = get_value_compare_payload(settings)
+
+    relationships = payload["index_relationships"]
+    assert relationships["ok"] is True
+    assert relationships["return_correlation"]["observations"] == 2
+    assert relationships["return_correlation"]["matrix"]["h21052.CSI"]["CN2296.CNI"] == 1.0
+    overlap = relationships["component_overlap"]
+    assert overlap["ok"] is True
+    assert overlap["matrix"]["h21052.CSI"]["CN2296.CNI"]["common_count"] == 1
+    assert overlap["matrix"]["h21052.CSI"]["CN2296.CNI"]["union_count"] == 3
+    assert overlap["matrix"]["h21052.CSI"]["CN2296.CNI"]["count_overlap"] == 0.333333
+    assert overlap["matrix"]["h21052.CSI"]["CN2296.CNI"]["weight_overlap"] == 0.333333
+
+
 def test_chinext_total_return_payload_reads_three_cached_indices(tmp_path) -> None:
     settings = load_settings(root=tmp_path, env_file=tmp_path / ".env")
     settings.cache_dir.mkdir(parents=True)

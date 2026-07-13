@@ -127,6 +127,13 @@ DEFAULT_VALUE_COMPARE_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = (
     ),
 )
 
+VALUE_COMPARE_RELATIONSHIP_CODES: tuple[str, ...] = (
+    "h21052.CSI",
+    "CN2296.CNI",
+    "h20269.CSI",
+    "480092.CNI",
+)
+
 VALUE_COMPARE_BACKGROUND = ValueCompareInstrument(
     code="000001.SH",
     name="上证指数",
@@ -377,7 +384,7 @@ US_ETF_OBSERVER_INSTRUMENTS: tuple[ValueCompareInstrument, ...] = tuple(
 
 
 def get_value_compare_payload(settings: Settings, *, refresh: bool = False) -> dict[str, object]:
-    return _get_compare_payload(
+    payload = _get_compare_payload(
         settings,
         instruments=DEFAULT_VALUE_COMPARE_INSTRUMENTS,
         background=VALUE_COMPARE_BACKGROUND,
@@ -385,6 +392,16 @@ def get_value_compare_payload(settings: Settings, *, refresh: bool = False) -> d
         layered_cash_weight=LAYERED_CASH_WEIGHT,
         refresh=refresh,
     )
+    payload["index_relationships"] = _build_index_relationships(
+        settings,
+        histories={
+            code: _history_from_records(rows)
+            for code, rows in payload["series"].items()
+            if code in VALUE_COMPARE_RELATIONSHIP_CODES
+        },
+        refresh=refresh,
+    )
+    return payload
 
 
 def get_chinext_total_return_payload(settings: Settings, *, refresh: bool = False) -> dict[str, object]:
@@ -551,6 +568,193 @@ def _get_compare_payload(
         "rebalance_analysis": rebalance_analysis,
         "portfolio_analysis": portfolio_analysis,
         "errors": errors,
+    }
+
+
+def _history_from_records(rows: object) -> pd.DataFrame:
+    if not isinstance(rows, list):
+        raise RuntimeError("History records are unavailable")
+    return _normalize_history(pd.DataFrame(rows))
+
+
+def _build_index_relationships(
+    settings: Settings,
+    *,
+    histories: dict[str, pd.DataFrame],
+    refresh: bool,
+) -> dict[str, object]:
+    instruments = {
+        item.code: item
+        for item in DEFAULT_VALUE_COMPARE_INSTRUMENTS
+        if item.code in VALUE_COMPARE_RELATIONSHIP_CODES
+    }
+    ordered_codes = [code for code in VALUE_COMPARE_RELATIONSHIP_CODES if code in histories]
+    result: dict[str, object] = {
+        "indexes": [asdict(instruments[code]) for code in VALUE_COMPARE_RELATIONSHIP_CODES],
+        "return_correlation": _build_return_correlation(histories, ordered_codes),
+        "component_overlap": _build_component_overlap(settings, instruments, refresh=refresh),
+    }
+    result["ok"] = bool(result["return_correlation"].get("ok"))
+    return result
+
+
+def _build_return_correlation(
+    histories: dict[str, pd.DataFrame], codes: list[str]
+) -> dict[str, object]:
+    if len(codes) < 2:
+        return {"ok": False, "error": "可用于相关性计算的指数不足两个"}
+    values: list[pd.Series] = []
+    for code in codes:
+        frame = histories[code].sort_values("date").drop_duplicates("date", keep="last")
+        values.append(frame.set_index("date")["value"].astype(float).rename(code))
+    aligned = pd.concat(values, axis=1, join="inner").sort_index()
+    returns = aligned.pct_change().dropna(how="any")
+    if len(returns) < 2:
+        return {"ok": False, "error": "共同交易日不足，无法计算相关性"}
+    correlation = returns.corr()
+    matrix = {
+        row_code: {column_code: _json_float(correlation.loc[row_code, column_code]) for column_code in codes}
+        for row_code in codes
+    }
+    return {
+        "ok": True,
+        "codes": codes,
+        "start_date": pd.Timestamp(returns.index.min()).strftime("%Y-%m-%d"),
+        "end_date": pd.Timestamp(returns.index.max()).strftime("%Y-%m-%d"),
+        "observations": int(len(returns)),
+        "matrix": matrix,
+    }
+
+
+def _build_component_overlap(
+    settings: Settings,
+    instruments: dict[str, ValueCompareInstrument],
+    *,
+    refresh: bool,
+) -> dict[str, object]:
+    snapshots: dict[str, pd.DataFrame] = {}
+    errors: list[dict[str, str]] = []
+    for code in VALUE_COMPARE_RELATIONSHIP_CODES:
+        try:
+            snapshots[code] = load_or_fetch_index_components(
+                settings,
+                instruments[code],
+                refresh=refresh,
+            )
+        except Exception as exc:
+            errors.append({"code": code, "error": str(exc)})
+
+    if len(snapshots) < 2:
+        return {
+            "ok": False,
+            "status": "unavailable",
+            "source": "Tushare index_weight",
+            "error": "指数成分权重数据暂不可用",
+            "errors": errors,
+        }
+
+    matrix: dict[str, dict[str, dict[str, object]]] = {}
+    pairs: list[dict[str, object]] = []
+    for left_code in VALUE_COMPARE_RELATIONSHIP_CODES:
+        if left_code not in snapshots:
+            continue
+        matrix[left_code] = {}
+        for right_code in VALUE_COMPARE_RELATIONSHIP_CODES:
+            if right_code not in snapshots:
+                continue
+            overlap = _component_overlap_metrics(snapshots[left_code], snapshots[right_code])
+            matrix[left_code][right_code] = overlap
+            if left_code < right_code:
+                pairs.append({"left_code": left_code, "right_code": right_code, **overlap})
+    return {
+        "ok": True,
+        "status": "ok",
+        "source": "Tushare index_weight",
+        "matrix": matrix,
+        "pairs": pairs,
+        "snapshots": {
+            code: {
+                "as_of_date": pd.Timestamp(frame["trade_date"].iloc[0]).strftime("%Y-%m-%d"),
+                "constituent_count": int(len(frame)),
+            }
+            for code, frame in snapshots.items()
+        },
+        "errors": errors,
+    }
+
+
+def load_or_fetch_index_components(
+    settings: Settings, instrument: ValueCompareInstrument, *, refresh: bool = False
+) -> pd.DataFrame:
+    path = _component_cache_path(settings, instrument)
+    if path.exists() and not refresh:
+        return _load_cached_components(path)
+    if not settings.tushare_token:
+        raise RuntimeError("TUSHARE_TOKEN is not configured")
+    try:
+        import tushare as ts
+    except Exception as exc:  # pragma: no cover - import guard
+        raise RuntimeError(f"tushare import failed: {exc}") from exc
+    frame = ts.pro_api(settings.tushare_token).index_weight(index_code=instrument.code)
+    snapshot = _normalize_component_snapshot(frame, instrument.code)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    snapshot.to_csv(path, index=False, encoding="utf-8")
+    return snapshot
+
+
+def _load_cached_components(path: Path) -> pd.DataFrame:
+    return _normalize_component_snapshot(pd.read_csv(path), index_code=None)
+
+
+def _normalize_component_snapshot(frame: pd.DataFrame, index_code: str | None) -> pd.DataFrame:
+    required = {"con_code", "trade_date", "weight"}
+    if not required.issubset(frame.columns):
+        raise RuntimeError("指数成分权重数据字段不完整")
+    output = frame.copy()
+    if index_code is not None:
+        if "index_code" in output:
+            output = output[
+                output["index_code"].astype(str).str.upper() == index_code.upper()
+            ]
+    output["trade_date"] = pd.to_datetime(output["trade_date"], errors="coerce")
+    output["weight"] = pd.to_numeric(output["weight"], errors="coerce")
+    output["con_code"] = output["con_code"].astype(str).str.strip()
+    output = output.dropna(subset=["trade_date", "weight"])
+    output = output[output["con_code"].ne("")]
+    if output.empty:
+        raise RuntimeError("指数成分权重数据为空")
+    latest_date = output["trade_date"].max()
+    output = output[output["trade_date"] == latest_date]
+    output = output.groupby("con_code", as_index=False).agg(
+        trade_date=("trade_date", "max"),
+        weight=("weight", "sum"),
+    )
+    if output.empty:
+        raise RuntimeError("指数最新成分权重数据为空")
+    return output.sort_values("con_code").reset_index(drop=True)
+
+
+def _component_overlap_metrics(left: pd.DataFrame, right: pd.DataFrame) -> dict[str, object]:
+    left_weights = left.set_index("con_code")["weight"].astype(float)
+    right_weights = right.set_index("con_code")["weight"].astype(float)
+    left_codes = set(left_weights.index)
+    right_codes = set(right_weights.index)
+    common_codes = sorted(left_codes & right_codes)
+    union_count = len(left_codes | right_codes)
+    if left_codes == right_codes:
+        return {
+            "common_count": len(common_codes),
+            "union_count": union_count,
+            "count_overlap": 1.0,
+            "weight_overlap": 1.0,
+        }
+    weight_scale = max(float(left_weights.sum()), float(right_weights.sum()), 1e-12)
+    common_weight = sum(min(float(left_weights[code]), float(right_weights[code])) for code in common_codes)
+    return {
+        "common_count": len(common_codes),
+        "union_count": union_count,
+        "count_overlap": _json_float(len(common_codes) / union_count if union_count else 0.0),
+        "weight_overlap": _json_float(common_weight / weight_scale),
     }
 
 
@@ -1291,6 +1495,11 @@ def _normalize_history(frame: pd.DataFrame) -> pd.DataFrame:
 def _cache_path(settings: Settings, instrument: ValueCompareInstrument) -> Path:
     safe_code = instrument.code.replace(".", "_")
     return settings.cache_dir / f"value_compare_{safe_code}.csv"
+
+
+def _component_cache_path(settings: Settings, instrument: ValueCompareInstrument) -> Path:
+    safe_code = instrument.code.replace(".", "_")
+    return settings.cache_dir / f"index_components_{safe_code}.csv"
 
 
 def _round_float(value: object) -> float:

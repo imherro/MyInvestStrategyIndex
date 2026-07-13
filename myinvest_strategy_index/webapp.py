@@ -1479,6 +1479,37 @@ def render_etf_compare_page(top_panel_html: str = "") -> str:
     .rebalance-table-wrap {
       overflow-x: auto;
     }
+    .relationship-note {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .relationship-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+    .relationship-card {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      overflow: hidden;
+    }
+    .relationship-card h3 {
+      margin: 0;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      color: var(--text);
+      font-size: 13px;
+    }
+    .relationship-card .table-wrap { overflow-x: auto; }
+    .relationship-card table { min-width: 540px; }
+    .relationship-card th:first-child,
+    .relationship-card td:first-child { text-align: left; }
+    .relationship-card th:not(:first-child),
+    .relationship-card td:not(:first-child) { text-align: right; }
     tr.best-row td {
       background: #f2fbf8;
       font-weight: 650;
@@ -1815,6 +1846,7 @@ def render_etf_compare_page(top_panel_html: str = "") -> str:
       .date-row { grid-template-columns: 1fr; }
       .chart-toolbar { left: 8px; right: 8px; }
       th, td { white-space: normal; }
+      .relationship-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -1961,6 +1993,13 @@ def render_etf_compare_page(top_panel_html: str = "") -> str:
           </table>
         </div>
       </section>
+      <section id="index-relationships-section" hidden>
+        <h2 class="panel-title">指数成分重叠与相关性</h2>
+        <div class="content">
+          <p id="index-relationships-note" class="relationship-note"></p>
+          <div id="index-relationships-grid" class="relationship-grid"></div>
+        </div>
+      </section>
       <section id="errors-section" hidden>
         <h2 class="panel-title">数据提示</h2>
         <div id="errors" class="content note"></div>
@@ -1982,6 +2021,7 @@ const LONGEST_MODE_LABEL = document.body.dataset.longestModeLabel || "2012起";
 const LONGEST_BASE_TEXT = document.body.dataset.longestBaseText || "后上市标的接到虚拟等权ETF位置";
 const INCLUDE_RECOVERY_METRICS = document.body.dataset.extraMetrics === "true";
 const SHOW_BACKGROUND = document.body.dataset.showBackground === "true";
+const SHOW_INDEX_RELATIONSHIPS = document.body.dataset.showIndexRelationships === "true";
 const DEFAULT_START_DATE = document.body.dataset.defaultStartDate || "";
 const DEFAULT_UNSELECTED_CODES = new Set(
   (document.body.dataset.defaultUnselectedCodes || "")
@@ -2034,6 +2074,9 @@ const dom = {
   portfolioRiskBody: document.getElementById("portfolio-risk-body"),
   portfolioCorrelationBody: document.getElementById("portfolio-correlation-body"),
   portfolioTurnoverBody: document.getElementById("portfolio-turnover-body"),
+  indexRelationshipsSection: document.getElementById("index-relationships-section"),
+  indexRelationshipsNote: document.getElementById("index-relationships-note"),
+  indexRelationshipsGrid: document.getElementById("index-relationships-grid"),
   refresh: document.getElementById("refresh-data"),
   reset: document.getElementById("reset-range"),
   panLeft: document.getElementById("pan-left"),
@@ -2714,6 +2757,7 @@ function renderAll() {
   renderRiskParityWeights(range);
   renderRebalanceAnalysis();
   renderPortfolioAnalysis();
+  renderIndexRelationships();
   renderErrors();
 }
 
@@ -2747,6 +2791,121 @@ function renderPortfolioAnalysis() {
     + codes.map((code) => `<tr><th>${code}</th>${codes.map((other) => `<td class="num">${ratioText(analysis.correlation_matrix[code]?.[other])}</td>`).join("")}</tr>`).join("");
   dom.portfolioTurnoverBody.innerHTML = Object.entries(analysis.annual_turnover || {})
     .map(([year, value]) => `<tr><th>${year}</th><td class="num">${pct(value)}</td></tr>`).join("");
+}
+
+function renderIndexRelationships() {
+  if (!dom.indexRelationshipsSection || !SHOW_INDEX_RELATIONSHIPS) return;
+  const relationships = state.payload?.index_relationships;
+  if (!relationships) {
+    dom.indexRelationshipsSection.hidden = true;
+    return;
+  }
+  dom.indexRelationshipsSection.hidden = false;
+  dom.indexRelationshipsGrid.innerHTML = "";
+  const indexes = Array.isArray(relationships.indexes) ? relationships.indexes : [];
+  const names = new Map(indexes.map((item) => [item.code, item.name]));
+  const correlation = relationships.return_correlation;
+  const overlap = relationships.component_overlap;
+  const notes = [];
+  if (correlation?.ok) {
+    notes.push(`收益相关性基于 ${correlation.start_date} 至 ${correlation.end_date} 的共同交易日日收益率，共 ${correlation.observations} 个观测值。`);
+    dom.indexRelationshipsGrid.appendChild(buildRelationshipMatrix({
+      title: "日收益相关性",
+      codes: correlation.codes || [],
+      names,
+      matrix: correlation.matrix || {},
+      formatter: (value) => Number.isFinite(value) ? value.toFixed(2) : "-",
+      tone: (value) => correlationTone(value),
+    }));
+  } else {
+    notes.push(`收益相关性暂不可用：${correlation?.error || "缺少共同交易日数据"}。`);
+  }
+  if (overlap?.ok) {
+    const snapshotText = Object.entries(overlap.snapshots || {})
+      .map(([code, item]) => `${names.get(code) || code} ${item.as_of_date}（${item.constituent_count}只）`)
+      .join("；");
+    notes.push(`成分重叠采用各指数最新可用调样日：${snapshotText}。数量重叠=共同成分数/并集数；权重重叠=共同成分权重较小值之和。`);
+    const codes = indexes.map((item) => item.code).filter((code) => overlap.matrix?.[code]);
+    dom.indexRelationshipsGrid.appendChild(buildRelationshipMatrix({
+      title: "成分数量重叠",
+      codes,
+      names,
+      matrix: overlap.matrix || {},
+      formatter: (value) => Number.isFinite(value?.count_overlap) ? pct(value.count_overlap) : "-",
+      tone: (value) => overlapTone(value?.count_overlap),
+      detail: (value) => Number.isFinite(value?.common_count) ? `${value.common_count}/${value.union_count}` : "",
+    }));
+    dom.indexRelationshipsGrid.appendChild(buildRelationshipMatrix({
+      title: "成分权重重叠",
+      codes,
+      names,
+      matrix: overlap.matrix || {},
+      formatter: (value) => Number.isFinite(value?.weight_overlap) ? pct(value.weight_overlap) : "-",
+      tone: (value) => overlapTone(value?.weight_overlap),
+    }));
+  } else {
+    notes.push(`成分重叠暂不可用：${overlap?.error || "数据源未返回成分权重"}。`);
+  }
+  dom.indexRelationshipsNote.textContent = notes.join(" ");
+}
+
+function buildRelationshipMatrix({ title, codes, names, matrix, formatter, tone, detail }) {
+  const card = document.createElement("div");
+  card.className = "relationship-card";
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  const wrap = document.createElement("div");
+  wrap.className = "table-wrap";
+  const table = document.createElement("table");
+  const head = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  const blank = document.createElement("th");
+  blank.textContent = "指数";
+  headRow.appendChild(blank);
+  codes.forEach((code) => {
+    const cell = document.createElement("th");
+    cell.textContent = names.get(code) || code;
+    headRow.appendChild(cell);
+  });
+  head.appendChild(headRow);
+  const body = document.createElement("tbody");
+  codes.forEach((rowCode) => {
+    const row = document.createElement("tr");
+    const label = document.createElement("td");
+    label.textContent = names.get(rowCode) || rowCode;
+    row.appendChild(label);
+    codes.forEach((columnCode) => {
+      const cell = document.createElement("td");
+      const value = matrix?.[rowCode]?.[columnCode];
+      cell.textContent = formatter(value);
+      const className = tone?.(value);
+      if (className) cell.className = className;
+      if (detail && rowCode !== columnCode) {
+        const detailText = detail(value);
+        if (detailText) cell.title = `共同成分/并集：${detailText}`;
+      }
+      row.appendChild(cell);
+    });
+    body.appendChild(row);
+  });
+  table.append(head, body);
+  wrap.appendChild(table);
+  card.append(heading, wrap);
+  return card;
+}
+
+function correlationTone(value) {
+  if (!Number.isFinite(value)) return "";
+  if (value >= 0.7) return "negative";
+  if (value <= 0.3) return "positive";
+  return "";
+}
+
+function overlapTone(value) {
+  if (!Number.isFinite(value)) return "";
+  if (value >= 0.5) return "negative";
+  if (value <= 0.2) return "positive";
+  return "";
 }
 
 function renderRebalanceAnalysis() {
@@ -3381,7 +3540,7 @@ def render_strategy_index_compare_page() -> str:
             '<body data-api-path="/api/strategy-index-compare/history.json" data-extra-metrics="true" '
             'data-synthetic-code="VIRTUAL_EQUAL_WEIGHT_STRATEGY" '
             'data-risk-parity-code="VIRTUAL_RISK_PARITY_STRATEGY" data-anchor-synthetic="false" '
-            'data-show-background="true" data-longest-mode-label="最早起" '
+            'data-show-background="true" data-show-index-relationships="true" data-longest-mode-label="最早起" '
             'data-longest-base-text="当前指数自身起点=0%；上证指数作灰色背景参考">'
         ),
         (
